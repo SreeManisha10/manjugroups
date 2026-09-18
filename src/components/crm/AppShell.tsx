@@ -28,7 +28,7 @@ function Brand() {
 }
 
 function LoginScreen() {
-  const { signIn, createAccount, data } = useCrm();
+  const { signIn, signInAsDeveloper, createAccount, data } = useCrm();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("arjun@manjugroups.in");
@@ -193,6 +193,17 @@ function LoginScreen() {
         <Button type="submit" disabled={busy} className="mt-5 w-full">
           {busy ? (mode === "signin" ? "Signing in…" : "Creating account…") : mode === "signin" ? "Continue" : "Create account"}
         </Button>
+
+        {import.meta.env.DEV && mode === "signin" && (
+          <Button
+            type="button"
+            variant="secondary"
+            className="mt-2 w-full"
+            onClick={signInAsDeveloper}
+          >
+            Continue as developer
+          </Button>
+        )}
 
         {mode === "signin" && (
           <div className="mt-5 space-y-1.5">

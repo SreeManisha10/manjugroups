@@ -12,6 +12,7 @@ interface CrmContextValue {
   authReady: boolean;
   reload: () => void;
   signIn: (email: string, password: string) => Promise<void>;
+  signInAsDeveloper: () => void;
   signOut: () => void;
   run: <T>(fn: () => Promise<CrmData>) => Promise<void>;
   createLead: (input: api.LeadInput) => Promise<void>;
@@ -78,6 +79,16 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         const u = await api.login(email, password);
         window.localStorage.setItem(SESSION_KEY, JSON.stringify(u));
         setUser(u);
+      },
+      signInAsDeveloper: () => {
+        const developer = data?.users.find((candidate) => candidate.role === "Admin") ?? {
+          id: "dev-user",
+          name: "Developer",
+          email: "developer@localhost",
+          role: "Admin" as const,
+        };
+        window.localStorage.setItem(SESSION_KEY, JSON.stringify(developer));
+        setUser(developer);
       },
       createAccount: async ({ name, email, password, confirmPassword, role }) => {
         await api.createAccount({ name, email, password, confirmPassword, role });
