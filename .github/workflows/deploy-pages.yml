@@ -38,6 +38,10 @@ jobs:
         run: |
           touch dist/client/.nojekyll
           sed -i 's|/assets/|./assets/|g' dist/client/_shell.html
+          if grep -Eq '(href|src|preloads|src:)="?/assets/' dist/client/_shell.html; then
+            echo "Root-relative asset URL found in generated shell"
+            exit 1
+          fi
           cp dist/client/_shell.html dist/client/index.html
           cp dist/client/_shell.html dist/client/404.html
 
