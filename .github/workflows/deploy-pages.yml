@@ -32,6 +32,8 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          VITE_BASE_PATH: /manjugroups
         run: npm run build
 
       - name: Configure GitHub Pages fallback
