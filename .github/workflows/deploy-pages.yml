@@ -36,10 +36,7 @@ jobs:
           export PAGES_BASE_PATH="/${GITHUB_REPOSITORY#*/}"
           export VITE_BASE_PATH="$PAGES_BASE_PATH"
           npm run build
-          find .output/public/assets -type f -name '*.js' -exec sed -i "s#TSS_ROUTER_BASEPATH:\\\`\\.\\`#TSS_ROUTER_BASEPATH:\\\`${PAGES_BASE_PATH}\\\`#g" {} +
-          sed -i -E "s#/?(\.\.?/)?assets/#${PAGES_BASE_PATH}/assets/#g" .output/public/_shell.html
-          cp .output/public/_shell.html .output/public/index.html
-          cp .output/public/_shell.html .output/public/404.html
+          node scripts/prepare-pages.mjs
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
