@@ -194,7 +194,7 @@ function LoginScreen() {
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm password"
+              placeholder="Confirm your password"
               autoComplete="new-password"
             />
           </FormField>
