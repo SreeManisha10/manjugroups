@@ -30,7 +30,7 @@ function Brand({ isEmployee = false }: { isEmployee?: boolean }) {
             : "flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-b from-[#2b6fb6] to-[#1e4fa0] shadow-sm"
         }
       >
-        <div className="font-mono text-sm font-bold text-white">MG</div>
+        <div className="font-mono text-sm font-bold text-white">MNG</div>
       </div>
       <div className="leading-tight">
         <div className="text-[15px] font-semibold tracking-tight">Manju Groups</div>
