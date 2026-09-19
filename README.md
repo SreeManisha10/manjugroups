@@ -166,15 +166,13 @@ For a standard sales workflow:
 
 The app is designed for a clean CRM dashboard, but screenshot assets are not included in the repo yet. To document the project properly, add images in a folder such as:
 
-```text
-docs/screenshots/
-```
+
 
 Then update the README with sections such as:
 
 ```md
 ## Dashboard
-![Dashboard Screenshot](docs/screenshots/dashboard.png)
+<img width="1919" height="946" alt="image" src="https://github.com/user-attachments/assets/a436260c-642d-412d-9465-afe9e90641d3" />
 
 ## Leads
 ![Leads Screenshot](docs/screenshots/leads.png)
