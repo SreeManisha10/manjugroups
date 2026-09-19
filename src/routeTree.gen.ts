@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BookingsRouteImport } from './routes/bookings'
+import { Route as ChatRouteImport } from './routes/chat'
+import { Route as EmployeeRouteImport } from './routes/employee'
 import { Route as LeadsRouteImport } from './routes/leads'
 import { Route as PropertiesRouteImport } from './routes/properties'
 
@@ -22,6 +24,16 @@ const IndexRoute = IndexRouteImport.update({
 const BookingsRoute = BookingsRouteImport.update({
   id: '/bookings',
   path: '/bookings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatRoute = ChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EmployeeRoute = EmployeeRouteImport.update({
+  id: '/employee',
+  path: '/employee',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LeadsRoute = LeadsRouteImport.update({
@@ -38,12 +50,16 @@ const PropertiesRoute = PropertiesRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/bookings': typeof BookingsRoute
+  '/chat': typeof ChatRoute
+  '/employee': typeof EmployeeRoute
   '/leads': typeof LeadsRoute
   '/properties': typeof PropertiesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/bookings': typeof BookingsRoute
+  '/chat': typeof ChatRoute
+  '/employee': typeof EmployeeRoute
   '/leads': typeof LeadsRoute
   '/properties': typeof PropertiesRoute
 }
@@ -51,20 +67,32 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/bookings': typeof BookingsRoute
+  '/chat': typeof ChatRoute
+  '/employee': typeof EmployeeRoute
   '/leads': typeof LeadsRoute
   '/properties': typeof PropertiesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/bookings' | '/leads' | '/properties'
+  fullPaths:
+    '/' | '/bookings' | '/chat' | '/employee' | '/leads' | '/properties'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/bookings' | '/leads' | '/properties'
-  id: '__root__' | '/' | '/bookings' | '/leads' | '/properties'
+  to: '/' | '/bookings' | '/chat' | '/employee' | '/leads' | '/properties'
+  id:
+    | '__root__'
+    | '/'
+    | '/bookings'
+    | '/chat'
+    | '/employee'
+    | '/leads'
+    | '/properties'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BookingsRoute: typeof BookingsRoute
+  ChatRoute: typeof ChatRoute
+  EmployeeRoute: typeof EmployeeRoute
   LeadsRoute: typeof LeadsRoute
   PropertiesRoute: typeof PropertiesRoute
 }
@@ -83,6 +111,20 @@ declare module '@tanstack/react-router' {
       path: '/bookings'
       fullPath: '/bookings'
       preLoaderRoute: typeof BookingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat': {
+      id: '/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/employee': {
+      id: '/employee'
+      path: '/employee'
+      fullPath: '/employee'
+      preLoaderRoute: typeof EmployeeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/leads': {
@@ -105,6 +147,8 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BookingsRoute: BookingsRoute,
+  ChatRoute: ChatRoute,
+  EmployeeRoute: EmployeeRoute,
   LeadsRoute: LeadsRoute,
   PropertiesRoute: PropertiesRoute,
 }

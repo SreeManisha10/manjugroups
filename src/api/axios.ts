@@ -14,16 +14,55 @@ export class HttpApiError extends Error {
   }
 }
 
-function getErrorMessage(error: unknown): { message: string; status: number | undefined } {
-  if (!(error instanceof Response)) {
+function extractErrorMessage(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (Array.isArray(value)) {
+    const messages = value.map(extractErrorMessage).filter(Boolean);
+    return messages.length ? messages.join("; ") : undefined;
+  }
+  if (!value || typeof value !== "object") return undefined;
+
+  const record = value as Record<string, unknown>;
+  for (const key of ["message", "error", "detail", "title", "description", "data"]) {
+    const message = extractErrorMessage(record[key]);
+    if (message) return message;
+  }
+  if (record.errors) {
+    const errors = Object.entries(record.errors)
+      .map(([field, issue]) => {
+        const message = extractErrorMessage(issue);
+        return message ? `${field}: ${message}` : undefined;
+      })
+      .filter(Boolean);
+    if (errors.length) return errors.join("; ");
+  }
+  return undefined;
+}
+
+async function getErrorMessage(error: unknown): Promise<{ message: string; status: number | undefined }> {
+  if (error instanceof HttpApiError) {
+    return { message: error.message, status: error.status };
+  }
+  if (error instanceof Response) {
+    const text = await error.text();
+    let payload: unknown = text;
+    if (text.trim()) {
+      try {
+        payload = JSON.parse(text) as unknown;
+      } catch {
+        // Some endpoints return a plain-text error body.
+      }
+    }
     return {
-      message: error instanceof Error ? error.message : "The server request failed.",
-      status: undefined,
+      message:
+        extractErrorMessage(payload) ??
+        `Request failed (${error.status}${error.statusText ? `: ${error.statusText}` : ""}).`,
+      status: error.status,
     };
   }
   return {
-    message: `Request failed (${error.status}).`,
-    status: error.status,
+    message: error instanceof Error ? error.message : "The server request failed.",
+    status: undefined,
   };
 }
 
@@ -71,7 +110,7 @@ export async function get<T>(url: string): Promise<T> {
     if (!response.ok) throw response;
     return unwrap(await readJson<ApiResponse<T>>(response));
   } catch (error) {
-    const result = getErrorMessage(error);
+    const result = await getErrorMessage(error);
     throw new HttpApiError(result.message, result.status);
   }
 }
@@ -93,7 +132,7 @@ export async function post<T, TPayload = unknown>(url: string, payload: TPayload
     if (!response.ok) throw response;
     return unwrap(await readJson<ApiResponse<T>>(response));
   } catch (error) {
-    const result = getErrorMessage(error);
+    const result = await getErrorMessage(error);
     throw new HttpApiError(result.message, result.status);
   }
 }
@@ -119,6 +158,11 @@ export const ENDPOINTS = {
   deleteLeadProject: "https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/delete_lead_project.php",
   leadNotes: (id: string) => `/leads/${id}/notes`,
   cancelBooking: () => "https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/delete_lead_project.php",
+  // New CRM endpoints for inventory ownership, status, notes and chat.
+  createProperty: "https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/add_new_insert_crm.php",
+  assignProperty: "https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/assign_property.php",
+  updatePropertyStatus: "https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/update_property_status.php",
+  createNote: "https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/insert_note.php",
 } as const;
 
 export const authAPI = {
@@ -163,6 +207,10 @@ export const leadsAPI = {
 export const propertiesAPI = {
   fetch: <T = unknown>(params?: Record<string, unknown> | URLSearchParams) =>
     api.get<T>(`${ENDPOINTS.properties}${buildQuery(params)}`),
+  create: <T = unknown, P = unknown>(payload: P) => api.post<T, P>(ENDPOINTS.createProperty, payload),
+  assign: <T = unknown, P = unknown>(payload: P) => api.post<T, P>(ENDPOINTS.assignProperty, payload),
+  updateStatus: <T = unknown, P = unknown>(payload: P) =>
+    api.post<T, P>(ENDPOINTS.updatePropertyStatus, payload),
 };
 
 export const bookingsAPI = {

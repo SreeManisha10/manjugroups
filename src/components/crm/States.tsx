@@ -28,18 +28,26 @@ export function EmptyState({
   );
 }
 
-export function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
+export function ErrorBanner({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry?: () => void;
+}) {
   return (
     <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-danger/10 p-3 ring-1 ring-danger/20">
       <p className="text-[12px] text-danger">{message}</p>
-      {onRetry && (
-        <button
-          onClick={onRetry}
-          className="rounded-lg border border-danger/30 px-2.5 py-1 font-mono text-[11px] text-danger transition-colors hover:bg-danger/10"
-        >
-          Retry
-        </button>
-      )}
+      <div className="flex shrink-0 items-center gap-2">
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className="rounded-lg border border-danger/30 px-2.5 py-1 font-mono text-[11px] text-danger transition-colors hover:bg-danger/10"
+          >
+            Retry
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,38 +1,54 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
+import { UserRound } from "lucide-react";
 import Swal from "sweetalert2";
-import avatar from "@/assets/avatar-sales-manager.jpg";
 import { Button, FormField, Input } from "@/components/kit";
 import { useCrm } from "@/lib/crm/store";
 import { isOverdue } from "@/lib/crm/format";
 
-const NAV = [
+const ADMIN_NAV = [
   { to: "/", label: "Dashboard" },
   { to: "/leads", label: "Leads" },
   { to: "/properties", label: "Properties" },
   { to: "/bookings", label: "Bookings" },
 ] as const;
 
-function Brand() {
+const EMPLOYEE_NAV = [
+  { to: "/", label: "Dashboard" },
+  { to: "/leads", label: "My Leads" },
+  { to: "/properties", label: "Assigned Units" },
+  { to: "/chat", label: "Chat" },
+] as const;
+
+function Brand({ isEmployee = false }: { isEmployee?: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-b from-[#2b6fb6] to-[#1e4fa0] shadow-sm">
+      <div
+        className={
+          isEmployee
+            ? "flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-b from-[#1d9a68] to-[#0f7551] shadow-sm"
+            : "flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-b from-[#2b6fb6] to-[#1e4fa0] shadow-sm"
+        }
+      >
         <div className="font-mono text-sm font-bold text-white">MG</div>
       </div>
       <div className="leading-tight">
         <div className="text-[15px] font-semibold tracking-tight">Manju Groups</div>
-        <div className="font-mono text-[11px] text-muted">Sales CRM · Internal</div>
+        <div className="font-mono text-[11px] text-muted">
+          {isEmployee ? "Sales rep · Field CRM" : "Sales CRM · Internal"}
+        </div>
       </div>
     </div>
   );
 }
 
 function LoginScreen() {
-  const { signIn, signInAsDeveloper, createAccount, data } = useCrm();
+  const { signIn, createAccount, error } = useCrm();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("arjun@manjugroups.in");
-  const [password, setPassword] = useState("Demo1234");
+  const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState<"Admin" | "Sales Employee">("Sales Employee");
   const [err, setErr] = useState<string | null>(null);
@@ -89,6 +105,7 @@ function LoginScreen() {
     try {
       await signIn(email, password);
       await Swal.fire({ icon: "success", title: "Signed in", text: "You are now signed in." });
+      await navigate({ to: "/", replace: true });
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : "Sign in failed.");
     } finally {
@@ -134,6 +151,12 @@ function LoginScreen() {
             ? "Use your work email and password to access the workspace."
             : "Create a secure account to continue with the CRM."}
         </p>
+
+        {error && (
+          <div className="mt-4 rounded-lg bg-danger/10 p-3 text-[12px] text-danger ring-1 ring-danger/20">
+            <span>{error}</span>
+          </div>
+        )}
 
         {mode === "signup" && (
           <FormField label="Full name" error={err ?? undefined} className="mt-5">
@@ -194,35 +217,6 @@ function LoginScreen() {
           {busy ? (mode === "signin" ? "Signing in…" : "Creating account…") : mode === "signin" ? "Continue" : "Create account"}
         </Button>
 
-        {import.meta.env.DEV && mode === "signin" && (
-          <Button
-            type="button"
-            variant="secondary"
-            className="mt-2 w-full"
-            onClick={signInAsDeveloper}
-          >
-            Continue as developer
-          </Button>
-        )}
-
-        {mode === "signin" && (
-          <div className="mt-5 space-y-1.5">
-            {(data?.users ?? []).map((u) => (
-              <button
-                key={u.id}
-                type="button"
-                onClick={() => {
-                  setEmail(u.email);
-                  setPassword(u.password ?? "Demo1234");
-                }}
-                className="flex w-full items-center justify-between rounded-lg border border-border bg-foreground/5 px-3 py-2 text-left text-[12px] transition-colors hover:bg-foreground/10"
-              >
-                <span>{u.name}</span>
-                <span className="font-mono text-[10px] text-muted">{u.role}</span>
-              </button>
-            ))}
-          </div>
-        )}
       </form>
     </div>
   );
@@ -240,21 +234,44 @@ export function AppShell({
   children: ReactNode;
 }) {
   const { user, authReady, data, signOut } = useCrm();
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isAdmin = user?.role === "Admin";
-  const visibleNav = NAV.filter((item) => isAdmin || item.to !== "/bookings");
+  const isEmployee = user?.role === "Sales Employee";
+  const isDashboard = pathname === "/";
+  const visibleNav = isAdmin ? ADMIN_NAV : EMPLOYEE_NAV;
 
   if (!authReady) return <div className="min-h-screen" />;
   if (!user) return <LoginScreen />;
 
   const overdue = (data?.leads ?? []).filter((l) => isOverdue(l.followUpDate)).length;
+  const themeVars = isEmployee
+    ? ({
+        "--primary": "hsl(154 62% 38%)",
+        "--primary-foreground": "hsl(150 70% 98%)",
+        "--background": "hsl(150 25% 97%)",
+        "--surface": "hsl(0 0% 100%)",
+        "--muted": "hsl(158 15% 38%)",
+        "--border": "hsl(154 18% 28% / 0.08)",
+        "--border-strong": "hsl(154 18% 28% / 0.14)",
+      } as React.CSSProperties)
+    : undefined;
 
   return (
-    <div className="relative min-h-screen animate-fade text-foreground">
-      <div className="mx-auto flex max-w-[1440px] gap-6 p-4 md:p-6 lg:gap-8">
-        <aside className="glass sticky top-6 hidden h-[calc(100vh-3rem)] w-64 shrink-0 flex-col rounded-2xl p-4 lg:flex">
+    <div
+      className="relative min-h-screen animate-fade text-foreground"
+      style={themeVars}
+    >
+      <div className="flex gap-6 p-4 md:p-6 lg:gap-8">
+        <aside
+          className={
+            isEmployee
+              ? "glass sticky top-6 hidden h-[calc(100vh-3rem)] w-64 shrink-0 flex-col rounded-2xl border border-emerald-500/10 bg-gradient-to-b from-emerald-50/80 to-white p-4 shadow-[0_20px_40px_-35px_rgba(16,185,129,0.65)] lg:flex"
+              : "glass sticky top-6 hidden h-[calc(100vh-3rem)] w-64 shrink-0 flex-col rounded-2xl p-4 lg:flex"
+          }
+        >
           <div className="px-2 pb-5 pt-1">
-            <Brand />
+            <Brand isEmployee={isEmployee} />
           </div>
           <nav className="flex flex-col gap-0.5 text-[13px] font-medium">
             {visibleNav.map((item) => (
@@ -263,7 +280,9 @@ export function AppShell({
                 to={item.to}
                 className={
                   pathname === item.to
-                    ? "rounded-lg bg-primary/10 px-3 py-2 text-foreground"
+                    ? isEmployee
+                      ? "rounded-lg bg-emerald-500/10 px-3 py-2 text-emerald-900 ring-1 ring-emerald-500/20"
+                      : "rounded-lg bg-primary/10 px-3 py-2 text-foreground"
                     : "rounded-lg px-3 py-2 text-muted transition-colors hover:bg-foreground/5 hover:text-foreground"
                 }
               >
@@ -273,39 +292,56 @@ export function AppShell({
           </nav>
 
           {overdue > 0 && (
-            <div className="mt-6 rounded-xl bg-warn/10 p-3 ring-1 ring-warn/20">
-              <div className="font-mono text-[10px] uppercase tracking-wide text-warn">
+            <div
+              className={
+                isEmployee
+                  ? "mt-6 rounded-xl bg-emerald-500/10 p-3 ring-1 ring-emerald-500/20"
+                  : "mt-6 rounded-xl bg-warn/10 p-3 ring-1 ring-warn/20"
+              }
+            >
+              <div className={isEmployee ? "font-mono text-[10px] uppercase tracking-wide text-emerald-700" : "font-mono text-[10px] uppercase tracking-wide text-warn"}>
                 {overdue} overdue
               </div>
               <div className="mt-1 text-[12px] text-foreground">follow-ups need action today</div>
             </div>
           )}
 
-          <div className="mt-auto flex items-center gap-2.5 rounded-xl bg-foreground/5 p-2.5">
-            <img
-              src={avatar}
-              alt=""
-              width={816}
-              height={816}
-              loading="lazy"
-              className="size-8 rounded-md object-cover"
-            />
+          <div className={isEmployee ? "mt-auto flex items-center gap-2.5 rounded-xl bg-emerald-50 p-2.5 ring-1 ring-emerald-200/70" : "mt-auto flex items-center gap-2.5 rounded-xl bg-foreground/5 p-2.5"}>
+            <div
+              className={
+                isEmployee
+                  ? "flex size-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200"
+                  : "flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/20"
+              }
+            >
+              <UserRound size={16} strokeWidth={2} aria-hidden="true" />
+            </div>
             <div className="min-w-0 leading-tight">
               <div className="truncate text-[12px] font-medium">{user.name}</div>
-              <div className="font-mono text-[10px] text-muted">{user.role}</div>
+              <div className={isEmployee ? "font-mono text-[10px] text-emerald-700" : "font-mono text-[10px] text-muted"}>{user.role}</div>
             </div>
             <Button
               variant="secondary"
               size="sm"
               className="ml-auto font-mono text-[10px]"
-              onClick={signOut}
+              onClick={async () => {
+                signOut();
+                await navigate({ to: "/", replace: true });
+                await Swal.fire({
+                  icon: "success",
+                  title: "Successfully logged out",
+                  text: "Your session has been closed.",
+                  timer: 1600,
+                  showConfirmButton: false,
+                });
+              }}
             >
-              exit
+              Log out
             </Button>
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1">
+        <main className={isDashboard ? "min-w-0 flex-1 overflow-hidden" : "min-w-0 flex-1"}>
           <header className="flex flex-wrap items-end justify-between gap-4 pb-6">
             <div>
               <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted">

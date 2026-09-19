@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useLocation } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/crm/AppShell";
 import { StageChip } from "@/components/crm/StageChip";
 import { EmptyState, ErrorBanner, LoadingRows } from "@/components/crm/States";
@@ -37,18 +37,21 @@ const STAGE_BAR: Record<string, string> = {
 };
 
 function Dashboard() {
-  const { data, loading, error, reload, user } = useCrm();
+  const { data, loading, error, reload, demoMode, user } = useCrm();
   const { users, unitLabel } = useLookups();
   const location = useLocation();
   const isAdmin = user?.role === "Admin";
+  const pipelineRef = useRef<HTMLDivElement | null>(null);
+  const [activeStageIndex, setActiveStageIndex] = useState(0);
+  const [showAllStages, setShowAllStages] = useState(false);
   const [todayPage, setTodayPage] = useState(0);
   const [overallPage, setOverallPage] = useState(0);
   const [todayLimit, setTodayLimit] = useState(5);
   const [overallLimit, setOverallLimit] = useState(5);
 
   useEffect(() => {
-    reload();
-  }, [reload, location.pathname]);
+    if (!demoMode) reload();
+  }, [reload, location.pathname, demoMode]);
 
   const visibleLeads = useMemo(() => {
     if (!data?.leads) return [];
@@ -86,6 +89,58 @@ function Dashboard() {
     overallPage * overallLimit,
     (overallPage + 1) * overallLimit,
   );
+
+  const pipelineStages = useMemo(
+    () =>
+      LEAD_STAGES.filter((stage) => stage !== "Contacted" && stage !== "Interested").map((stage) => {
+        const items =
+          stage === "Booked"
+            ? stats.bookings
+                .map((booking) => {
+                  const lead = data?.leads.find((candidate) => candidate.id === booking.leadId);
+                  const unit = data?.units.find((candidate) => candidate.id === booking.unitId);
+                  if (!lead) return null;
+                  return {
+                    id: booking.id,
+                    name: lead.name,
+                    budget: booking.amount,
+                    interestedUnitId: lead.interestedUnitId ?? unit?.id ?? null,
+                    source: lead.source,
+                  };
+                })
+                .filter(
+                  (
+                    item,
+                  ): item is {
+                    id: string;
+                    name: string;
+                    budget: number;
+                    interestedUnitId: string | null;
+                    source: string;
+                  } => item !== null,
+                )
+            : stats.leads.filter((lead) => lead.stage === stage);
+
+        return { stage, items };
+      }),
+    [data?.leads, data?.units, stats.bookings, stats.leads],
+  );
+
+  const activeStage = pipelineStages[activeStageIndex] ?? pipelineStages[0];
+
+  const scrollPipeline = (direction: number) => {
+    if (pipelineStages.length === 0) return;
+    setActiveStageIndex((current) => {
+      const nextIndex = (current + direction + pipelineStages.length) % pipelineStages.length;
+      return nextIndex;
+    });
+    pipelineRef.current?.scrollTo({ left: direction * 320, behavior: "smooth" });
+  };
+
+  const goToStage = (index: number) => {
+    setActiveStageIndex(index);
+    setShowAllStages(false);
+  };
 
   return (
     <AppShell
@@ -181,58 +236,119 @@ function Dashboard() {
           </section>
 
           <section className="glass animate-rise mt-4 rounded-2xl p-4 [animation-delay:240ms]">
-            <div className="flex items-center justify-between pb-3">
+            <div className="flex items-center justify-between gap-3 pb-3">
               <div className="text-[14px] font-semibold tracking-tight">Stage pipeline</div>
-              <div className="font-mono text-[11px] text-muted">
-                {formatINR(stats.leads.filter((l) => l.stage !== "Lost").reduce((s, l) => s + l.budget, 0))} in play
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAllStages((value) => !value)}
+                  className="rounded-full border border-border bg-surface px-2.5 py-1.5 text-[11px] font-medium text-muted transition-colors hover:border-primary/30 hover:text-foreground"
+                >
+                  {showAllStages ? "Highlight view" : "Show all"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scrollPipeline(-1)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-xl text-muted shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5 hover:text-foreground"
+                  aria-label="Previous stage card"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scrollPipeline(1)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-xl text-muted shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5 hover:text-foreground"
+                  aria-label="Next stage card"
+                >
+                  ›
+                </button>
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              {LEAD_STAGES.filter((s) => s !== "Contacted" && s !== "Interested").map((stage) => {
-                const items =
-                  stage === "Booked"
-                    ? stats.bookings
-                        .map((booking) => {
-                          const lead = data?.leads.find((candidate) => candidate.id === booking.leadId);
-                          const unit = data?.units.find((candidate) => candidate.id === booking.unitId);
-                          if (!lead) return null;
-                          return {
-                            id: booking.id,
-                            name: lead.name,
-                            budget: booking.amount,
-                            interestedUnitId: lead.interestedUnitId ?? unit?.id ?? null,
-                            source: lead.source,
-                          };
-                        })
-                        .filter((item): item is { id: string; name: string; budget: number; interestedUnitId: string | null; source: string } => item !== null)
-                    : stats.leads.filter((l) => l.stage === stage);
 
-                return (
-                  <div key={stage} className="rounded-xl bg-foreground/[0.03] p-3 ring-1 ring-border">
-                    <div className="flex items-center justify-between">
+            {showAllStages ? (
+              <div
+                ref={pipelineRef}
+                className="flex gap-4 overflow-x-auto pb-2 pl-1 pr-1 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              >
+                {pipelineStages.map(({ stage, items }) => (
+                  <div
+                    key={stage}
+                    className="w-[280px] shrink-0 snap-start rounded-2xl border border-border/80 bg-gradient-to-b from-white to-foreground/[0.02] p-3 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.28)]"
+                  >
+                    <div className="flex items-center justify-between gap-2 border-b border-border pb-2">
                       <StageChip stage={stage} />
-                      <span className="font-mono text-[11px] text-faint">{items.length}</span>
+                      <span className="rounded-full bg-foreground/[0.04] px-2 py-1 font-mono text-[10px] text-faint">
+                        {items.length}
+                      </span>
                     </div>
-                    <div className="mt-2 space-y-2">
+                    <div className="mt-3 space-y-2">
                       {items.slice(0, 3).map((item) => {
-                        const label =
-                          stage === "Booked"
-                            ? `${item.name} · ${unitLabel(item.interestedUnitId)?.text ?? formatINR(item.budget)}`
-                            : `${item.name} · ${unitLabel(item.interestedUnitId)?.text ?? formatINR(item.budget)}`;
+                        const label = `${item.name} · ${unitLabel(item.interestedUnitId)?.text ?? formatINR(item.budget)}`;
 
                         return (
-                          <div key={item.id} className="rounded-lg bg-surface/80 p-2.5 ring-1 ring-border">
-                            <div className="text-[12px] font-medium">{item.name}</div>
-                            <div className="font-mono text-[10px] text-faint">{label}</div>
+                          <div
+                            key={item.id}
+                            className="rounded-xl border border-border bg-surface/80 p-2.5 shadow-[0_4px_14px_-12px_rgba(15,23,42,0.38)] transition-colors hover:bg-primary/[0.02]"
+                          >
+                            <div className="text-[12px] font-medium text-foreground">{item.name}</div>
+                            <div className="mt-1 font-mono text-[10px] leading-relaxed text-faint">{label}</div>
                           </div>
                         );
                       })}
-                      {items.length === 0 && <p className="text-[11px] text-faint">No leads</p>}
+                      {items.length === 0 && (
+                        <div className="flex min-h-[78px] items-center justify-center rounded-xl border border-dashed border-border bg-foreground/[0.02] text-[11px] text-faint">
+                          No leads
+                        </div>
+                      )}
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/8 via-surface to-surface p-4 shadow-[0_18px_34px_-18px_rgba(59,130,246,0.5)]">
+                <div className="flex items-center justify-between gap-2 pb-3">
+                  <StageChip stage={activeStage.stage} />
+                  <span className="rounded-full bg-foreground/[0.04] px-2 py-1 font-mono text-[10px] text-faint">
+                    {activeStage.items.length}
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {activeStage.items.slice(0, 4).map((item) => {
+                    const label = `${item.name} · ${unitLabel(item.interestedUnitId)?.text ?? formatINR(item.budget)}`;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-xl border border-primary/10 bg-background/80 p-3 shadow-[0_8px_18px_-14px_rgba(15,23,42,0.45)]"
+                      >
+                        <div className="text-[13px] font-medium text-foreground">{item.name}</div>
+                        <div className="mt-1 font-mono text-[10px] leading-relaxed text-faint">{label}</div>
+                      </div>
+                    );
+                  })}
+                  {activeStage.items.length === 0 && (
+                    <div className="flex min-h-[110px] items-center justify-center rounded-xl border border-dashed border-border bg-foreground/[0.02] text-[11px] text-faint">
+                      No leads in this stage
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  {pipelineStages.map(({ stage }, index) => (
+                    <button
+                      key={stage}
+                      type="button"
+                      onClick={() => goToStage(index)}
+                      className={`h-2.5 rounded-full transition-all ${
+                        index === activeStageIndex ? "w-8 bg-primary" : "w-2.5 bg-foreground/20 hover:bg-foreground/35"
+                      }`}
+                      aria-label={`Show ${stage} stage`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="glass animate-rise mt-4 rounded-2xl p-4 [animation-delay:300ms]">

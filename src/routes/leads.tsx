@@ -44,7 +44,7 @@ type DisplayLead = Lead & {
 };
 
 function LeadsPage() {
-  const { data, loading, error, reload, deleteLead, user } = useCrm();
+  const { data, loading, error, reload, demoMode, deleteLead, user } = useCrm();
   const { users, unitLabel } = useLookups();
   const isAdmin = user?.role === "Admin";
 
@@ -69,6 +69,12 @@ function LeadsPage() {
   }, [isAdmin, user?.id]);
 
   useEffect(() => {
+    if (demoMode) {
+      setRemoteLoading(false);
+      setRemoteLeads(null);
+      setRemoteError(null);
+      return;
+    }
     let active = true;
     const effectiveAssignee = isAdmin ? assignee : user?.id ?? "all";
     fetchLeads({
@@ -130,18 +136,18 @@ function LeadsPage() {
         );
         setRemoteTotal(pagination.total ?? response.data.length);
       })
-      .catch(() => {
+      .catch((caught) => {
         if (active) {
           setRemoteLoading(false);
-          setRemoteError("Leads API returned no usable data. Check the endpoint response.");
-          setRemoteLeads(isApiConfigured ? [] : null);
+          setRemoteError(caught instanceof Error ? caught.message : "The leads API could not be reached.");
+          setRemoteLeads(null);
           setRemoteTotal(0);
         }
       });
     return () => {
       active = false;
     };
-  }, [query, stage, assignee, page, users, isAdmin, user?.id]);
+  }, [query, stage, assignee, page, users, isAdmin, user?.id, demoMode]);
 
   const effectiveAssignee = isAdmin ? assignee : user?.id ?? "all";
 
@@ -205,7 +211,9 @@ function LeadsPage() {
       }
     >
       {error && <ErrorBanner message={error} onRetry={reload} />}
-      {remoteError && <ErrorBanner message={remoteError} />}
+      {remoteError && !demoMode && (
+        <ErrorBanner message={remoteError} onRetry={reload} />
+      )}
 
       <section className="glass animate-rise rounded-2xl p-4">
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3">

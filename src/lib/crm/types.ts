@@ -20,6 +20,7 @@ export type Role = "Admin" | "Sales Employee";
 
 export interface User {
   id: string;
+  user_id?: string;
   name: string;
   email: string;
   role: Role;
@@ -71,6 +72,7 @@ export interface Unit {
   areaSqft: number;
   price: number; // INR
   status: UnitStatus;
+  assignedToId?: string | null;
 }
 
 export interface Booking {

@@ -6,8 +6,8 @@
  * hooks stay untouched.
  */
 import { seed } from "./seed";
-import type { Booking, CrmData, Lead, LeadStage, Note, User } from "./types";
-import { api, HttpApiError, isApiConfigured, ENDPOINTS } from "@/api/axios";
+import type { Booking, CrmData, Lead, LeadStage, Unit, UnitStatus, User } from "./types";
+import { api, HttpApiError, isApiConfigured, ENDPOINTS, propertiesAPI } from "@/api/axios";
 
 const STORAGE_KEY = "harborview-crm-v1";
 const LATENCY = 350;
@@ -133,10 +133,9 @@ const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2,
 export class ApiError extends Error {}
 
 export async function fetchAll(): Promise<CrmData> {
-  if (isApiConfigured) {
-    try {
-      const raw = await api.get<CrmData | { data: CrmData }>(ENDPOINTS.crm);
-      const payload = (raw && typeof raw === "object" && "data" in raw ? raw.data : raw) as Partial<CrmData> | null;
+  try {
+    const raw = await api.get<CrmData | { data: CrmData }>(ENDPOINTS.crm);
+    const payload = (raw && typeof raw === "object" && "data" in raw ? raw.data : raw) as Partial<CrmData> | null;
 
       const users = (payload?.users ?? []).map((user, index) => ({
         id: user?.id ?? `u${index + 1}`,
@@ -165,6 +164,7 @@ export async function fetchAll(): Promise<CrmData> {
         areaSqft: Number(unit?.areaSqft ?? 0),
         price: Number(unit?.price ?? 0),
         status: unit?.status || "Available",
+        assignedToId: unit?.assignedToId ?? null,
       }));
 
       const leads = (payload?.leads ?? []).map((lead, index) => ({
@@ -193,21 +193,19 @@ export async function fetchAll(): Promise<CrmData> {
           createdAt: booking?.createdAt || new Date().toISOString(),
         }));
 
-      return {
-        users,
-        projects,
-        buildings,
-        units,
-        leads,
-        bookings,
-      } as CrmData;
-    } catch (error) {
-      // Keep the demo workspace usable when the backend is offline.
-      if (!(error instanceof HttpApiError) || error.status !== undefined) throw error;
-      return delay(read());
-    }
+    return {
+      users,
+      projects,
+      buildings,
+      units,
+      leads,
+      notes: payload?.notes ?? [],
+      bookings,
+    } as CrmData;
+  } catch (error) {
+    if (error instanceof HttpApiError) throw new ApiError(error.message);
+    throw error;
   }
-  return delay(read());
 }
 
 export async function fetchProperties(params: {
@@ -300,90 +298,106 @@ export type CreateLeadPayload = Omit<
 export type LeadInput = CreateLeadPayload;
 
 export async function createLead(payload: CreateLeadPayload): Promise<CrmData> {
-  if (isApiConfigured) {
-    await api.post<unknown, CreateLeadPayload>(ENDPOINTS.createLead, payload);
-    return fetchAll();
-  }
-  const data = read();
-  const duplicate = data.leads.find(
-    (l) => l.phone.replace(/\s/g, "") === payload.phone.replace(/\s/g, ""),
-  );
-  if (duplicate) throw new ApiError(`A lead with this phone already exists (${duplicate.name}).`);
-
-  const assignee = data.users.find(
-    (candidate) => candidate.name.trim().toLowerCase() === payload.assignee.name.trim().toLowerCase(),
-  );
-  const unit = payload.interestedUnit
-    ? data.units.find(
-        (candidate) =>
-          candidate.code === payload.interestedUnit?.code &&
-          candidate.type === payload.interestedUnit?.type,
-      )
-    : undefined;
-
-  const { assignee: _assignee, property: _property, interestedUnit: _interestedUnit, ...leadFields } = payload;
-  data.leads.unshift({
-    ...leadFields,
-    assigneeId: assignee?.id ?? "u1",
-    interestedUnitId: unit?.id ?? null,
-    id: uid("l"),
-    createdAt: new Date().toISOString(),
-  });
-  write(data);
-  return delay(data);
+  await api.post<unknown, CreateLeadPayload>(ENDPOINTS.createLead, payload);
+  return fetchAll();
 }
 
 export async function updateLead(id: string, patch: Partial<Lead>): Promise<CrmData> {
-  if (isApiConfigured) {
-    await api.post<unknown, Partial<Lead> & { id: string }>(ENDPOINTS.editLead, {
-      id,
-      ...patch,
-    });
-    return fetchAll();
+  await api.post<unknown, Partial<Lead> & { id: string }>(ENDPOINTS.editLead, {
+    id,
+    ...patch,
+  });
+  return fetchAll();
+}
+
+export type CreateUnitInput = Omit<Unit, "id">;
+export type CreateUnitFallback = {
+  projectId?: string;
+  projectName?: string;
+  buildingName?: string;
+  forceLocal?: boolean;
+};
+
+export async function createUnit(
+  input: CreateUnitInput,
+  fallbackData?: CrmData | null,
+  fallback?: CreateUnitFallback,
+): Promise<CrmData> {
+  if (fallback?.forceLocal) return saveUnitLocally(input, fallbackData, fallback);
+  try {
+    await propertiesAPI.create<unknown, CreateUnitInput>(input);
+  } catch {
+    return saveUnitLocally(input, fallbackData, fallback);
   }
-  const data = read();
-  const lead = data.leads.find((l) => l.id === id);
-  if (!lead) throw new ApiError("Lead not found.");
-  if (patch.stage === "Booked" && !data.bookings.some((b) => b.leadId === id)) {
-    throw new ApiError("Create a booking to move this lead to Booked.");
+  return fetchAll();
+}
+
+function saveUnitLocally(
+  input: CreateUnitInput,
+  fallbackData: CrmData | null | undefined,
+  fallback: CreateUnitFallback = {},
+): Promise<CrmData> {
+  const localData = structuredClone(fallbackData ?? read());
+  let projectId = fallback.projectId ?? input.buildingId;
+  if (fallback.projectName) {
+    const existingProject = localData.projects.find(
+      (project) => project.name.toLowerCase() === fallback.projectName?.trim().toLowerCase(),
+    );
+    projectId = existingProject?.id ?? uid("local_project");
+    if (!existingProject) {
+      localData.projects.push({ id: projectId, name: fallback.projectName.trim(), location: "" });
+    }
   }
-  Object.assign(lead, patch);
-  write(data);
-  return delay(data);
+  if (fallback.buildingName) {
+    const existingBuilding = localData.buildings.find(
+      (building) => building.projectId === projectId && building.name.toLowerCase() === fallback.buildingName?.trim().toLowerCase(),
+    );
+    const buildingId = existingBuilding?.id ?? uid("local_building");
+    if (!existingBuilding) {
+      localData.buildings.push({ id: buildingId, projectId, name: fallback.buildingName.trim() });
+    }
+    input = { ...input, buildingId };
+  }
+  localData.units.push({ ...input, id: uid("local_unit") });
+  write(localData);
+  return delay(localData);
+}
+
+export async function updateUnitAssignment(unitId: string, assignedToId: string | null): Promise<CrmData> {
+  await propertiesAPI.assign<unknown, { id: string; assignedToId: string | null }>({
+    id: unitId,
+    assignedToId,
+  });
+  return fetchAll();
+}
+
+export async function updateUnitStatus(
+  unitId: string,
+  status: UnitStatus,
+  actorId: string,
+): Promise<CrmData> {
+  await propertiesAPI.updateStatus<unknown, { id: string; status: UnitStatus; actorId: string }>({
+    id: unitId,
+    status,
+    actorId,
+  });
+  return fetchAll();
 }
 
 export async function deleteLead(id: string): Promise<CrmData> {
-  if (isApiConfigured) {
-    return api.post<CrmData, { id: string }>(ENDPOINTS.deleteLead, { id });
-  }
-  const data = read();
-  const leadIndex = data.leads.findIndex((lead) => lead.id === id);
-  if (leadIndex === -1) throw new ApiError("Lead not found.");
-  data.leads.splice(leadIndex, 1);
-  write(data);
-  return delay(data);
+  await api.post<unknown, { id: string }>(ENDPOINTS.deleteLead, { id });
+  return fetchAll();
 }
 
 export async function addNote(leadId: string, authorId: string, body: string): Promise<CrmData> {
   const trimmed = body.trim();
   if (!trimmed) throw new ApiError("Note cannot be empty.");
-  if (isApiConfigured) {
-    return api.post<CrmData, { authorId: string; body: string }>(ENDPOINTS.leadNotes(leadId), {
-      authorId,
-      body: trimmed,
-    });
-  }
-  const data = read();
-  const note: Note = {
-    id: uid("n"),
+  await api.post<unknown, { leadId: string; authorId: string; body: string }>(ENDPOINTS.createNote, {
     leadId,
     authorId,
     body: trimmed,
-    createdAt: new Date().toISOString(),
-  };
-  data.notes.unshift(note);
-  write(data);
-  return delay(data);
+  });
+  return fetchAll();
 }
 
 /**
@@ -397,49 +411,23 @@ export async function createBooking(
   unitCode: string,
   agentName: string,
 ): Promise<CrmData> {
-  const data = read();
-  if (isApiConfigured) {
-    return api.post<CrmData, {
-      lead: string;
-      unitName: string;
-      unit: string;
-      agent: string;
-      bookedOn: string;
-      price: number;
-    }>(ENDPOINTS.createBooking, {
-      lead: leadName,
-      unitName,
-      unit: unitCode,
-      agent: agentName,
-      bookedOn: new Date().toISOString().slice(0, 10),
-      price: data.units.find((unit) => unit.code === unitCode)?.price ?? 0,
-    });
-  }
-  const unit = data.units.find((u) => u.code === unitCode);
-  const lead = data.leads.find((l) => l.name === leadName);
-  const agent = data.users.find((candidate) => candidate.name === agentName);
-  if (!unit || !lead) throw new ApiError("Lead or unit not found.");
-  if (!agent) throw new ApiError("Agent not found.");
-  if (unit.status === "Sold" || data.bookings.some((b) => b.unitId === unit.id)) {
-    throw new ApiError(`Unit ${unit.code} is already booked by another agent.`);
-  }
-  if (lead.stage === "Lost") throw new ApiError("A lost lead cannot be booked. Reopen it first.");
-
-  const booking: Booking = {
-    id: uid("bk"),
-    leadId: lead.id,
-    unitId: unit.id,
-    agentId: agent.id,
-    amount: unit.price,
-    createdAt: new Date().toISOString(),
-  };
-  data.bookings.unshift(booking);
-  unit.status = "Sold";
-  lead.stage = "Booked";
-  lead.interestedUnitId = unit.id;
-  lead.followUpDate = null;
-  write(data);
-  return delay(data);
+  const current = await fetchAll();
+  await api.post<unknown, {
+    lead: string;
+    unitName: string;
+    unit: string;
+    agent: string;
+    bookedOn: string;
+    price: number;
+  }>(ENDPOINTS.createBooking, {
+    lead: leadName,
+    unitName,
+    unit: unitCode,
+    agent: agentName,
+    bookedOn: new Date().toISOString().slice(0, 10),
+    price: current.units.find((unit) => unit.code === unitCode)?.price ?? 0,
+  });
+  return fetchAll();
 }
 
 export type BookingApiRecord = Omit<Booking, "leadId" | "unitId" | "agentId"> & {
@@ -475,133 +463,87 @@ export async function fetchBookings(params: {
   offset?: number;
   limit?: number;
 } = {}): Promise<BookingsResponse> {
-  if (isApiConfigured) {
-    const query = new URLSearchParams({
-      search: params.search ?? "",
-      lead: params.lead && params.lead !== "all" ? params.lead : "all",
-      unit: params.unit && params.unit !== "all" ? params.unit : "all",
-      agent: params.agent && params.agent !== "all" ? params.agent : "all",
-      offset: String(params.offset ?? 0),
-      limit: String(params.limit ?? 10),
-    });
-    const response = await api.get<BookingApiRecord[] | BookingsResponse>(
-      `${ENDPOINTS.getBookings}?${query.toString()}`,
-    );
-    return Array.isArray(response) ? { data: response } : response;
-  }
-  return delay({ data: read().bookings });
+  const query = new URLSearchParams({
+    search: params.search ?? "",
+    lead: params.lead && params.lead !== "all" ? params.lead : "all",
+    unit: params.unit && params.unit !== "all" ? params.unit : "all",
+    agent: params.agent && params.agent !== "all" ? params.agent : "all",
+    offset: String(params.offset ?? 0),
+    limit: String(params.limit ?? 10),
+  });
+  const response = await api.get<BookingApiRecord[] | BookingsResponse>(
+    `${ENDPOINTS.getBookings}?${query.toString()}`,
+  );
+  return Array.isArray(response) ? { data: response } : response;
 }
 
 export async function cancelBooking(bookingId: string): Promise<CrmData> {
-  if (isApiConfigured) {
-    return api.post<CrmData, { id: string }>(ENDPOINTS.cancelBooking(), { id: bookingId });
-  }
-  const data = read();
-  const idx = data.bookings.findIndex((b) => b.id === bookingId);
-  if (idx === -1) throw new ApiError("Booking not found.");
-  const booking = data.bookings[idx];
-  if (!booking) throw new ApiError("Booking not found.");
-  data.bookings.splice(idx, 1);
-  const unit = data.units.find((u) => u.id === booking.unitId);
-  if (unit) unit.status = "Available";
-  const lead = data.leads.find((l) => l.id === booking.leadId);
-  if (lead) lead.stage = "Negotiation";
-  write(data);
-  return delay(data);
+  await api.post<unknown, { id: string }>(ENDPOINTS.cancelBooking(), { id: bookingId });
+  return fetchAll();
 }
 
-export async function login(email: string, password: string): Promise<User> {
-  if (isApiConfigured) {
-    try {
-      const resp = await api.post<{
-        id: string;
-        email: string;
-        name?: string;
-        token?: string;
-        role?: string;
-      }>(ENDPOINTS.authSignin, { email, password });
-      return {
-        id: resp.id,
-        email: resp.email,
-        name: resp.name ?? resp.email,
-        role: (resp.role as User["role"]) ?? "Sales Employee",
-        password: "",
-      } as User;
-    } catch (e) {
-      if (e instanceof HttpApiError) throw new ApiError(e.message);
-      throw e;
-    }
+export async function login(email: string, password: string, user_id?: string): Promise<User> {
+  try {
+    const payload = {
+      email,
+      password,
+      user_id: user_id ?? "",
+    };
+    const resp = await api.post<{
+      id?: string;
+      user_id?: string;
+      email: string;
+      name?: string;
+      token?: string;
+      role?: string;
+    }>(ENDPOINTS.authSignin, payload);
+    const resolvedId = resp.user_id ?? resp.id ?? "";
+    return {
+      id: resolvedId || resp.email,
+      user_id: resolvedId || undefined,
+      email: resp.email,
+      name: resp.name ?? resp.email,
+      role: (resp.role as User["role"]) ?? "Sales Employee",
+      password: "",
+    } as User;
+  } catch (e) {
+    if (e instanceof HttpApiError) throw new ApiError(e.message);
+    throw e;
   }
-
-  const data = read();
-  const user = data.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
-  if (!user) throw new ApiError("No account found for that email.");
-  if (user.password && user.password !== password) {
-    throw new ApiError("Incorrect password.");
-  }
-  if (!user.password && password.trim()) {
-    // Keep legacy demo users usable even if no password was stored yet.
-    return delay(user);
-  }
-  if (!user.password && !password.trim()) {
-    return delay(user);
-  }
-  return delay(user);
 }
 
 export async function createAccount(input: {
   name: string;
   email: string;
   password: string;
-  confirmPassword?: string;
-  role?: User["role"];
+  confirmPassword?: string | undefined;
+  role?: User["role"] | undefined;
+  user_id?: string | undefined;
 }): Promise<User> {
-  if (isApiConfigured) {
-    try {
-      const resp = await api.post<{ id: string; email: string; name?: string; token?: string; role?: string }>(
-        ENDPOINTS.authSignup,
-        { name: input.name, email: input.email, password: input.password, confirmPassword: input.confirmPassword, role: input.role },
-      );
-      return {
-        id: resp.id,
-        name: resp.name ?? input.name,
-        email: resp.email,
-        role: (resp.role as User['role']) ?? input.role ?? "Sales Employee",
-        password: input.password,
-      } as User;
-    } catch (e) {
-      if (e instanceof HttpApiError) throw new ApiError(e.message);
-      throw e;
-    }
+  try {
+    const payload = {
+      name: input.name,
+      email: input.email,
+      password: input.password,
+      confirmPassword: input.confirmPassword,
+      role: input.role,
+      user_id: input.user_id ?? input.email,
+    };
+    const resp = await api.post<{ id?: string; user_id?: string; email: string; name?: string; token?: string; role?: string }>(
+      ENDPOINTS.authSignup,
+      payload,
+    );
+    const resolvedId = resp.user_id ?? resp.id ?? input.user_id ?? input.email;
+    return {
+      id: resolvedId,
+      user_id: resolvedId,
+      name: resp.name ?? input.name,
+      email: resp.email,
+      role: (resp.role as User['role']) ?? input.role ?? "Sales Employee",
+      password: input.password,
+    } as User;
+  } catch (e) {
+    if (e instanceof HttpApiError) throw new ApiError(e.message);
+    throw e;
   }
-
-  const data = read();
-  const trimmedName = input.name.trim();
-  const trimmedEmail = input.email.trim().toLowerCase();
-  const trimmedPassword = input.password.trim();
-
-  if (!trimmedName || trimmedName.length < 2) {
-    throw new ApiError("Please enter a valid name.");
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-    throw new ApiError("Please enter a valid work email.");
-  }
-  if (trimmedPassword.length < 8 || !/[A-Z]/.test(trimmedPassword) || !/[a-z]/.test(trimmedPassword) || !/\d/.test(trimmedPassword)) {
-    throw new ApiError("Password must be at least 8 characters and include uppercase, lowercase, and a number.");
-  }
-
-  const exists = data.users.some((user) => user.email.toLowerCase() === trimmedEmail);
-  if (exists) throw new ApiError("An account already exists for this email.");
-
-  const nextUser: User = {
-    id: uid("u"),
-    name: trimmedName,
-    email: trimmedEmail,
-    role: input.role ?? "Sales Employee",
-    password: trimmedPassword,
-  };
-
-  data.users.unshift(nextUser);
-  write(data);
-  return delay(nextUser);
 }

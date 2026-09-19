@@ -5,7 +5,7 @@ import { EmptyState, ErrorBanner, LoadingRows } from "@/components/crm/States";
 import { Button, Modal } from "@/components/kit";
 import { formatDate, formatINR } from "@/lib/crm/format";
 import { useCrm, useLookups } from "@/lib/crm/store";
-import { confirmAction, notifyError, notifySuccess } from "@/lib/crm/notifications";
+import { notifyError, notifySuccess } from "@/lib/crm/notifications";
 import {
   fetchBookings,
   fetchLeads,
@@ -36,8 +36,16 @@ export const Route = createFileRoute("/bookings")({
 
 function BookingsPage() {
   const navigate = useNavigate();
-  const { data, loading, error, reload, user, cancelBooking, createBooking, resetDemoData } =
-    useCrm();
+  const {
+    data,
+    loading,
+    error,
+    reload,
+    demoMode,
+    user,
+    cancelBooking,
+    createBooking,
+  } = useCrm();
   const { users, unitLabel } = useLookups();
   const [leadId, setLeadId] = useState("");
   const [unitId, setUnitId] = useState("");
@@ -51,8 +59,14 @@ function BookingsPage() {
   const [cancelBusy, setCancelBusy] = useState(false);
   const [remoteBookings, setRemoteBookings] = useState<BookingsResponse | null>(null);
   const [remoteLeadData, setRemoteLeadData] = useState<LeadsResponse["data"] | null>(null);
+  const [bookingsApiError, setBookingsApiError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (demoMode) {
+      setRemoteBookings(null);
+      setBookingsApiError(null);
+      return;
+    }
     let active = true;
     fetchBookings({
       search,
@@ -63,29 +77,42 @@ function BookingsPage() {
       limit: 10,
     })
       .then((response) => {
-        if (active) setRemoteBookings(response);
+        if (active) {
+          setRemoteBookings(response);
+          setBookingsApiError(null);
+        }
       })
-      .catch(() => {
-        if (active) setRemoteBookings(null);
+      .catch((caught) => {
+        if (active) {
+          setRemoteBookings(null);
+          setBookingsApiError(caught instanceof Error ? caught.message : "The bookings API could not be reached.");
+        }
       });
     return () => {
       active = false;
     };
-  }, [search, leadFilter, unitFilter, agentFilter, page]);
+  }, [search, leadFilter, unitFilter, agentFilter, page, demoMode]);
 
   useEffect(() => {
+    if (demoMode) {
+      setRemoteLeadData(null);
+      return;
+    }
     let active = true;
     fetchLeads({ search: "", stage: "all", assignee: "all", offset: 0, limit: 10 })
       .then((response) => {
         if (active) setRemoteLeadData(response.data);
       })
-      .catch(() => {
-        if (active) setRemoteLeadData(null);
+      .catch((caught) => {
+        if (active) {
+          setRemoteLeadData(null);
+          setBookingsApiError(caught instanceof Error ? caught.message : "The leads API could not be reached.");
+        }
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [demoMode]);
 
   const bookings: BookingApiRecord[] = remoteBookings?.data ?? data?.bookings ?? [];
   const totalBookings = remoteBookings?.pagination?.total ?? bookings.length;
@@ -184,31 +211,11 @@ function BookingsPage() {
     <AppShell
       eyebrow="Bookings"
       title="Confirmed bookings"
-      actions={
-        <button
-          onClick={async () => {
-            const result = await confirmAction(
-              "Reset demo data?",
-              "All local changes will be replaced by the sample dataset.",
-            );
-            if (!result.isConfirmed) return;
-            try {
-              await resetDemoData();
-              await notifySuccess("Demo data reset");
-            } catch (e) {
-              await notifyError(
-                "Reset failed",
-                e instanceof Error ? e.message : "Please try again.",
-              );
-            }
-          }}
-          className="rounded-lg border border-border-strong px-3 py-2 text-[12px] font-medium text-muted transition-colors hover:bg-foreground/5"
-        >
-          Reset demo data
-        </button>
-      }
     >
       {error && <ErrorBanner message={error} onRetry={reload} />}
+      {bookingsApiError && !demoMode && (
+        <ErrorBanner message={bookingsApiError} onRetry={reload} />
+      )}
 
       <section className="glass animate-rise rounded-2xl p-4">
         <div className="text-[14px] font-semibold tracking-tight">New booking</div>

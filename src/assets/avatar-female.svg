@@ -1,0 +1,23 @@
+<svg width="160" height="160" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Female avatar">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#eff6ff"/>
+      <stop offset="100%" stop-color="#dfe9f6"/>
+    </linearGradient>
+    <linearGradient id="blouse" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#4d82d3"/>
+      <stop offset="100%" stop-color="#2d5ea9"/>
+    </linearGradient>
+  </defs>
+  <rect width="160" height="160" rx="26" fill="url(#bg)"/>
+  <circle cx="81" cy="52" r="31" fill="#f5cdb4"/>
+  <path d="M52 57c2-23 18-35 31-35 24 0 38 18 38 36-11-10-20-14-35-14-15 0-27 5-34 13Z" fill="#2d2b3a"/>
+  <path d="M59 127c3-21 16-31 22-31 16 0 29 10 31 31v20H59v-20Z" fill="url(#blouse)"/>
+  <path d="M68 94c0-9 6-15 13-15s13 6 13 15v8H68v-8Z" fill="#f7d5c1" opacity="0.9"/>
+  <path d="M70 75c4 7 11 10 18 10s14-3 18-10" stroke="#be7b60" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <circle cx="71" cy="56" r="3.2" fill="#2d2b3a"/>
+  <circle cx="91" cy="56" r="3.2" fill="#2d2b3a"/>
+  <path d="M74 69c4 4 10 5 15 3" stroke="#9f5e48" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <path d="M61 128c9 10 19 15 20 15 10 0 19-6 23-16" stroke="#f1b899" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <path d="M61 127l-8 13h52l-8-13" fill="#245b9f" opacity="0.22"/>
+</svg>

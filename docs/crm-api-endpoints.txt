@@ -1,0 +1,429 @@
+MANJU GROUPS CRM API CONTRACT
+==============================
+
+Purpose
+-------
+This document defines the expected request and response bodies for the four
+active new CRM endpoints. Chat endpoint examples are retained at the end for
+future use, but Chat is currently static in the React frontend and does not
+call those endpoints.
+
+Base URL
+--------
+https://skyline-shortcut-duplicate.ngrok-free.dev/CRM
+
+All endpoints must:
+- Accept and return JSON.
+- Return Content-Type: application/json.
+- Return HTTP 2xx for success.
+- Return HTTP 4xx for validation or permission errors.
+- Return HTTP 5xx for unexpected server errors.
+
+Recommended common success response
+-----------------------------------
+{
+  "success": true,
+  "message": "Operation completed successfully.",
+  "data": {}
+}
+
+Recommended common error response
+---------------------------------
+{
+  "success": false,
+  "message": "A clear error message for the user.",
+  "errors": {}
+}
+
+The React client accepts the response envelope above. For chat GET, the data
+field must contain an array. Mutation responses are followed by a fresh CRM
+GET request, so the mutation response can contain the changed record or a
+simple success result.
+
+
+1. CREATE PROPERTY / UNIT
+=========================
+
+Method: POST
+URL:
+https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/insert_property.php
+
+Purpose
+-------
+Creates one sellable property unit inside an existing building. In the React
+CRM, a property is represented as a unit belonging to a project/building.
+
+Request headers
+---------------
+Content-Type: application/json
+Accept: application/json
+
+Example request body
+--------------------
+{
+  "buildingId": "b1",
+  "code": "T-801",
+  "type": "3BHK",
+  "areaSqft": 1420,
+  "price": 18500000,
+  "status": "Available",
+  "assignedToId": "u2"
+}
+
+Request fields
+--------------
+buildingId     string   Required. Existing building ID.
+code           string   Required. Unique unit/property code.
+type           string   Required. Example: 2BHK, 3BHK, 4BHK.
+areaSqft       number   Required. Must be greater than zero.
+price          number   Required. Price in INR. Must be greater than zero.
+status         string   Required. Available, Reserved, or Sold.
+assignedToId   string   Optional. Sales employee ID, or null for unassigned.
+
+Example success response: HTTP 201
+-----------------------------------
+{
+  "success": true,
+  "message": "Property created successfully.",
+  "data": {
+    "id": "un_8f31c2a",
+    "buildingId": "b1",
+    "code": "T-801",
+    "type": "3BHK",
+    "areaSqft": 1420,
+    "price": 18500000,
+    "status": "Available",
+    "assignedToId": "u2"
+  }
+}
+
+Example error response: HTTP 409
+--------------------------------
+{
+  "success": false,
+  "message": "A unit with code T-801 already exists.",
+  "errors": {
+    "code": "duplicate"
+  }
+}
+
+
+2. ASSIGN PROPERTY TO SALES REP
+===============================
+
+Method: POST
+URL:
+https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/assign_property.php
+
+Purpose
+-------
+Assigns an existing property unit to a sales employee. Send null to remove
+assignment.
+
+Request headers
+---------------
+Content-Type: application/json
+Accept: application/json
+
+Example request body
+--------------------
+{
+  "id": "un_8f31c2a",
+  "assignedToId": "u2"
+}
+
+Request fields
+--------------
+id             string   Required. Existing unit/property ID.
+assignedToId   string   Required. Sales employee ID or null.
+
+Example unassign request body
+-----------------------------
+{
+  "id": "un_8f31c2a",
+  "assignedToId": null
+}
+
+Example success response: HTTP 200
+-----------------------------------
+{
+  "success": true,
+  "message": "Property assigned successfully.",
+  "data": {
+    "id": "un_8f31c2a",
+    "assignedToId": "u2"
+  }
+}
+
+Example error response: HTTP 404
+--------------------------------
+{
+  "success": false,
+  "message": "Property not found.",
+  "errors": {
+    "id": "not_found"
+  }
+}
+
+
+3. UPDATE PROPERTY STATUS
+=========================
+
+Method: POST
+URL:
+https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/update_property_status.php
+
+Purpose
+-------
+Changes a property's availability status. Admins may update any unit. Sales
+employees may update only units assigned to themselves.
+
+Sold status should normally be produced by the booking flow. The backend should
+reject direct Sold updates unless the business rules explicitly allow them.
+
+Request headers
+---------------
+Content-Type: application/json
+Accept: application/json
+
+Example request body
+--------------------
+{
+  "id": "un_8f31c2a",
+  "status": "Reserved",
+  "actorId": "u2"
+}
+
+Request fields
+--------------
+id        string   Required. Existing unit/property ID.
+status    string   Required. Available or Reserved for manual changes.
+actorId   string   Required. Authenticated user ID performing the change.
+
+Example success response: HTTP 200
+-----------------------------------
+{
+  "success": true,
+  "message": "Property status updated successfully.",
+  "data": {
+    "id": "un_8f31c2a",
+    "status": "Reserved"
+  }
+}
+
+Example permission error response: HTTP 403
+-------------------------------------------
+{
+  "success": false,
+  "message": "You can only update properties assigned to you.",
+  "errors": {
+    "permission": "assignment_required"
+  }
+}
+
+Example invalid status response: HTTP 422
+-----------------------------------------
+{
+  "success": false,
+  "message": "Use the booking endpoint to mark a property as Sold.",
+  "errors": {
+    "status": "invalid_transition"
+  }
+}
+
+
+4. CREATE LEAD NOTE
+===================
+
+Method: POST
+URL:
+https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/insert_note.php
+
+Purpose
+-------
+Adds a note to a lead timeline.
+
+Request headers
+---------------
+Content-Type: application/json
+Accept: application/json
+
+Example request body
+--------------------
+{
+  "leadId": "l2",
+  "authorId": "u2",
+  "body": "Customer requested a site visit on Saturday afternoon."
+}
+
+Request fields
+--------------
+leadId     string   Required. Existing lead ID.
+authorId   string   Required. Existing user ID creating the note.
+body       string   Required. Non-empty note text.
+
+Example success response: HTTP 201
+-----------------------------------
+{
+  "success": true,
+  "message": "Note created successfully.",
+  "data": {
+    "id": "n_4b91aa2",
+    "leadId": "l2",
+    "authorId": "u2",
+    "body": "Customer requested a site visit on Saturday afternoon.",
+    "createdAt": "2026-09-19T10:30:00Z"
+  }
+}
+
+Example validation error response: HTTP 422
+-------------------------------------------
+{
+  "success": false,
+  "message": "Note cannot be empty.",
+  "errors": {
+    "body": "required"
+  }
+}
+
+
+5. DEFERRED: GET CHAT CONVERSATIONS
+===================================
+
+STATUS: Not currently connected. The React Chat page is static for now.
+
+Method: GET
+URL:
+https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/get_chat.php
+
+Purpose
+-------
+Returns conversations visible to one sales employee. The frontend sends the
+logged-in employee ID as the agentId query parameter.
+
+Example request URL
+-------------------
+https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/get_chat.php?agentId=u2
+
+Query parameters
+----------------
+agentId   string   Required. Sales employee/user ID.
+
+Example success response: HTTP 200
+-----------------------------------
+{
+  "success": true,
+  "message": "Chat conversations fetched successfully.",
+  "data": [
+    {
+      "id": "chat_l2",
+      "leadId": "l2",
+      "name": "Priya Mehta",
+      "phone": "+91 98450 22110",
+      "stage": "Interested",
+      "lastSeen": "2026-09-19T09:45:00Z",
+      "messages": [
+        {
+          "id": "msg_1001",
+          "from": "customer",
+          "text": "Can we schedule a site visit this weekend?",
+          "createdAt": "2026-09-19T09:30:00Z"
+        },
+        {
+          "id": "msg_1002",
+          "from": "rep",
+          "text": "Yes, Saturday afternoon is available.",
+          "createdAt": "2026-09-19T09:45:00Z"
+        }
+      ]
+    }
+  ]
+}
+
+The frontend also accepts a bare array response, but the success envelope above
+is recommended for consistency.
+
+Example empty response: HTTP 200
+--------------------------------
+{
+  "success": true,
+  "message": "No conversations found.",
+  "data": []
+}
+
+
+6. DEFERRED: SEND CHAT MESSAGE
+==============================
+
+STATUS: Not currently connected. The React Chat page keeps messages in local
+component state for the current page session only.
+
+Method: POST
+URL:
+https://skyline-shortcut-duplicate.ngrok-free.dev/CRM/send_chat.php
+
+Purpose
+-------
+Sends a message from a sales employee into an existing conversation. After the
+POST succeeds, the frontend calls GET /CRM/get_chat.php again to refresh the
+conversation list and messages.
+
+Request headers
+---------------
+Content-Type: application/json
+Accept: application/json
+
+Example request body
+--------------------
+{
+  "conversationId": "chat_l2",
+  "agentId": "u2",
+  "body": "Yes, Saturday afternoon is available."
+}
+
+Request fields
+--------------
+conversationId   string   Required. Existing conversation ID.
+agentId          string   Required. Authenticated sales employee ID.
+body             string   Required. Non-empty message text.
+
+Example success response: HTTP 201
+-----------------------------------
+{
+  "success": true,
+  "message": "Message sent successfully.",
+  "data": {
+    "id": "msg_1003",
+    "conversationId": "chat_l2",
+    "senderId": "u2",
+    "from": "rep",
+    "text": "Yes, Saturday afternoon is available.",
+    "createdAt": "2026-09-19T10:00:00Z"
+  }
+}
+
+Example permission error response: HTTP 403
+-------------------------------------------
+{
+  "success": false,
+  "message": "You do not have access to this conversation.",
+  "errors": {
+    "permission": "conversation_not_assigned"
+  }
+}
+
+
+Frontend integration notes
+==========================
+
+1. The React frontend currently uses POST for active endpoints 1, 2, 3, and 4.
+2. Chat endpoints 5 and 6 are documented for a future API integration only.
+3. Property, assignment, status, and note mutation responses are followed by a
+   fresh CRM data request through get_overall_data.php.
+4. Chat send is followed by another get_chat.php request.
+5. The frontend expects JSON, not HTML or PHP warnings.
+6. CORS must allow the frontend origin and the GET/POST methods.
+7. Every endpoint should validate IDs and permissions server-side. Frontend
+   controls are not sufficient security.
+8. The existing legacy endpoints in src/api/axios.ts are unchanged. These six
+   endpoints are additional endpoints.

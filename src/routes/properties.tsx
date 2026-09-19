@@ -1,11 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/crm/AppShell";
+import { PropertyFormDialog } from "@/components/crm/PropertyFormDialog";
 import { StatusChip } from "@/components/crm/StageChip";
 import { EmptyState, ErrorBanner, LoadingRows } from "@/components/crm/States";
+import { Button } from "@/components/kit";
 import { formatINR } from "@/lib/crm/format";
-import { useCrm } from "@/lib/crm/store";
+import { useCrm, useLookups } from "@/lib/crm/store";
 import { fetchProperties, type PropertiesResponse } from "@/lib/crm/api";
+import type { UnitStatus } from "@/lib/crm/types";
 
 export const Route = createFileRoute("/properties")({
   head: () => ({
@@ -34,14 +37,39 @@ const CELL: Record<string, string> = {
 const PAGE_SIZE = 10;
 
 function PropertiesPage() {
-  const { data, loading, error, reload } = useCrm();
+  const {
+    data,
+    loading,
+    error,
+    reload,
+    demoMode,
+    user,
+    updateUnitAssignment,
+    updateUnitStatus,
+  } = useCrm();
+  const { users } = useLookups();
+  const isEmployee = user?.role === "Sales Employee";
   const [projectName, setProjectName] = useState("all");
   const [status, setStatus] = useState("all");
+  const [assignedRep, setAssignedRep] = useState("all");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [formOpen, setFormOpen] = useState(false);
+  const [propertiesError, setPropertiesError] = useState<string | null>(null);
   const [propertiesResponse, setPropertiesResponse] = useState<PropertiesResponse | null>(null);
 
   useEffect(() => {
+    if (isEmployee) {
+      setAssignedRep(user?.id ?? "all");
+    }
+  }, [isEmployee, user?.id]);
+
+  useEffect(() => {
+    if (demoMode) {
+      setPropertiesResponse(null);
+      setPropertiesError(null);
+      return;
+    }
     let active = true;
     fetchProperties({
       search: query,
@@ -51,15 +79,21 @@ function PropertiesPage() {
       limit: PAGE_SIZE,
     })
       .then((response) => {
-        if (active) setPropertiesResponse(response);
+        if (active) {
+          setPropertiesResponse(response);
+          setPropertiesError(null);
+        }
       })
-      .catch(() => {
-        if (active) setPropertiesResponse(null);
+      .catch((caught) => {
+        if (active) {
+          setPropertiesResponse(null);
+          setPropertiesError(caught instanceof Error ? caught.message : "The properties API could not be reached.");
+        }
       });
     return () => {
       active = false;
     };
-  }, [query, projectName, status, page]);
+  }, [query, projectName, status, page, demoMode]);
 
   const totalProperties = propertiesResponse?.pagination?.total ?? propertiesResponse?.data.length ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalProperties / PAGE_SIZE));
@@ -71,12 +105,14 @@ function PropertiesPage() {
     );
     return projects.map((project) => {
       const buildings = (data?.buildings ?? []).filter((b) => b.projectId === project.id);
-      const units = (data?.units ?? []).filter(
-        (u) =>
-          buildings.some((b) => b.id === u.buildingId) &&
-          (status === "all" || u.status === status) &&
-          (!query.trim() || u.code.toLowerCase().includes(query.trim().toLowerCase())),
-      );
+      const units = (data?.units ?? []).filter((u) => {
+        const matchesProject = buildings.some((b) => b.id === u.buildingId);
+        const matchesStatus = status === "all" || u.status === status;
+        const matchesQuery = !query.trim() || u.code.toLowerCase().includes(query.trim().toLowerCase());
+        const matchesAssignedRep = assignedRep === "all" || (u.assignedToId ?? "") === assignedRep;
+        const matchesEmployee = !isEmployee || (u.assignedToId ?? user?.id ?? "") === user?.id;
+        return matchesProject && matchesStatus && matchesQuery && matchesAssignedRep && matchesEmployee;
+      });
       const total = (data?.units ?? []).filter((u) => buildings.some((b) => b.id === u.buildingId));
       return {
         project,
@@ -86,10 +122,13 @@ function PropertiesPage() {
         total,
       };
     });
-  }, [data, projectName, status, query]);
+  }, [data, projectName, status, query, assignedRep, isEmployee, user?.id]);
 
   const visibleUnits = groups.reduce((n, g) => n + g.units.length, 0);
-  const allUnits = data?.units ?? [];
+  const allUnits = (data?.units ?? []).filter((unit) => {
+    if (isEmployee) return (unit.assignedToId ?? user?.id ?? "") === user?.id;
+    return assignedRep === "all" || (unit.assignedToId ?? "") === assignedRep;
+  });
   const inventoryValue = allUnits.reduce((sum, unit) => sum + unit.price, 0);
   const kpis = [
     { label: "Total units", value: propertiesResponse?.kpis.totalUnits ?? allUnits.length },
@@ -116,26 +155,51 @@ function PropertiesPage() {
       value: formatINR(propertiesResponse?.kpis.inventoryValue ?? inventoryValue),
     },
   ];
-  const tableRows =
-    propertiesResponse?.data ??
-    groups.flatMap(({ project, buildings, units }) =>
-      units.map((unit) => ({
-        ...unit,
-        project: {
-          id: project.id,
-          name: project.name,
-          location: project.location,
-        },
-        building: {
-          id: unit.buildingId,
-          name: buildings.find((building) => building.id === unit.buildingId)?.name ?? "—",
-        },
-      })),
-    );
+  const tableRows = (propertiesResponse?.data ?? groups.flatMap(({ project, buildings, units }) => units.map((unit) => ({
+    ...unit,
+    project: {
+      id: project.id,
+      name: project.name,
+      location: project.location,
+    },
+    building: {
+      id: unit.buildingId,
+      name: buildings.find((building) => building.id === unit.buildingId)?.name ?? "—",
+    },
+    assignedTo: users.get(unit.assignedToId ?? "")?.name ?? "Unassigned",
+  })))) as Array<
+    (typeof data extends { units: infer T } ? T extends Array<infer U> ? U & { assignedTo?: string; project: { id: string; name: string; location: string }; building: { id: string; name: string } } : never : never) | {
+      assignedTo?: string;
+      project: { id: string; name: string; location: string };
+      building: { id: string; name: string };
+      id: string;
+      code: string;
+      type: string;
+      areaSqft: number;
+      price: number;
+      status: string;
+      assignedToId?: string | null;
+    }
+  >;
 
   return (
-    <AppShell eyebrow="Properties" title="Projects, buildings & units">
+    <AppShell
+      eyebrow="Properties"
+      title="Projects, buildings & units"
+      actions={
+        !isEmployee ? (
+          <Button size="sm" onClick={() => setFormOpen(true)}>
+            + Add property
+          </Button>
+        ) : undefined
+      }
+    >
       {error && <ErrorBanner message={error} onRetry={reload} />}
+      {propertiesError && !demoMode && (
+        <ErrorBanner message={propertiesError} onRetry={reload} />
+      )}
+
+      {formOpen && <PropertyFormDialog onClose={() => setFormOpen(false)} />}
 
       <section className="glass animate-rise rounded-2xl p-4">
         {loading ? (
@@ -183,6 +247,24 @@ function PropertiesPage() {
                 </option>
               ))}
             </select>
+            {!isEmployee && (
+              <select
+                className="rounded-lg border border-border bg-surface/70 px-2.5 py-1.5 text-[12px] text-muted"
+                value={assignedRep}
+                onChange={(e) => {
+                  setAssignedRep(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Filter by rep"
+              >
+                <option value="all">All reps</option>
+                {(data?.users ?? []).filter((candidate) => candidate.role === "Sales Employee").map((rep) => (
+                  <option key={rep.id} value={rep.id}>
+                    {rep.name}
+                  </option>
+                ))}
+              </select>
+            )}
             <select
               className="rounded-lg border border-border bg-surface/70 px-2.5 py-1.5 text-[12px] text-muted"
               value={status}
@@ -264,6 +346,7 @@ function PropertiesPage() {
                   <th className="border-b border-border px-2 py-2 font-medium">Type</th>
                   <th className="border-b border-border px-2 py-2 font-medium">Area</th>
                   <th className="border-b border-border px-2 py-2 font-medium">Price</th>
+                  <th className="border-b border-border px-2 py-2 font-medium">Assigned to</th>
                   <th className="border-b border-border py-2 pl-2 text-right font-medium">
                     Status
                   </th>
@@ -288,8 +371,44 @@ function PropertiesPage() {
                     <td className="border-b border-border/60 px-2 py-3 font-mono text-[12px]">
                       {formatINR(unit.price)}
                     </td>
+                    <td className="border-b border-border/60 px-2 py-3 text-muted">
+                      {!isEmployee ? (
+                        <select
+                          value={unit.assignedToId ?? ""}
+                          onChange={(event) => {
+                            void updateUnitAssignment(unit.id, event.target.value || null);
+                          }}
+                          className="rounded-md border border-border bg-surface px-2 py-1 text-[11px]"
+                          aria-label={`Assign ${unit.code} to a rep`}
+                        >
+                          <option value="">Unassigned</option>
+                          {(data?.users ?? []).filter((candidate) => candidate.role === "Sales Employee").map((rep) => (
+                            <option key={rep.id} value={rep.id}>
+                              {rep.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        unit.assignedTo ?? "Unassigned"
+                      )}
+                    </td>
                     <td className="border-b border-border/60 py-3 pl-2 text-right">
-                      <StatusChip status={unit.status} />
+                      {unit.status === "Sold" ||
+                      (isEmployee && unit.assignedToId !== user?.id) ? (
+                        <StatusChip status={unit.status} />
+                      ) : (
+                        <select
+                          value={unit.status}
+                          onChange={(event) => {
+                            void updateUnitStatus(unit.id, event.target.value as UnitStatus);
+                          }}
+                          className="rounded-md border border-border bg-surface px-2 py-1 text-[11px]"
+                          aria-label={`Change status for ${unit.code}`}
+                        >
+                          <option value="Available">Available</option>
+                          <option value="Reserved">Reserved</option>
+                        </select>
+                      )}
                     </td>
                   </tr>
                 ))}
