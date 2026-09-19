@@ -67,13 +67,8 @@ npm run dev
 
 The app will run on:
 
-- http://localhost:8000
+- https://sreemanisha10.github.io/manjugroups/
 
-4. If you want to run the local API server as well:
-
-```bash
-npm run serve:api
-```
 
 ## Project structure
 
