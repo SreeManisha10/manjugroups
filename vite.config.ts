@@ -6,9 +6,13 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+const basePath = process.env.PAGES_BASE_PATH
+  ? `${process.env.PAGES_BASE_PATH.replace(/\/$/, "")}/`
+  : "/";
+
 export default defineConfig({
   vite: {
-    base: "/manjugroups/",
+    base: basePath,
     server: {
       host: "0.0.0.0",
       port: 8000,
