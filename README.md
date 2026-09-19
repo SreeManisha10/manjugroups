@@ -162,34 +162,6 @@ For a standard sales workflow:
 6. Mark the lead as interested, negotiation, or booked
 7. Confirm the booking in the booking screen
 
-## Screenshots
-
-The app is designed for a clean CRM dashboard, but screenshot assets are not included in the repo yet. To document the project properly, add images in a folder such as:
-
-
-
-Then update the README with sections such as:
-
-```md
-## Dashboard
-<img width="1919" height="946" alt="image" src="https://github.com/user-attachments/assets/a436260c-642d-412d-9465-afe9e90641d3" />
-
-## Leads
-![Leads Screenshot](docs/screenshots/leads.png)
-
-## Bookings
-![Bookings Screenshot](docs/screenshots/bookings.png)
-```
-
-Suggested screenshots to capture:
-
-- login page
-- admin dashboard
-- leads listing
-- property inventory screen
-- booking summary screen
-- employee view
-
 ## Environment notes
 
 This project is configured for a frontend-first workflow. If you are integrating with backend APIs later, update the URL configuration in the API layer under:
