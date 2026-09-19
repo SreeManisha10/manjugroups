@@ -1,6 +1,6 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import { UserRound } from "lucide-react";
+import { Eye, EyeOff, UserRound } from "lucide-react";
 import Swal from "sweetalert2";
 import { Button, FormField, Input } from "@/components/kit";
 import { useCrm } from "@/lib/crm/store";
@@ -53,6 +53,8 @@ function LoginScreen() {
   const [role, setRole] = useState<"Admin" | "Sales Employee">("Sales Employee");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const validateEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   const validatePassword = (value: string) =>
@@ -82,8 +84,17 @@ function LoginScreen() {
 
       setBusy(true);
       try {
-      await createAccount({ name, email, password, confirmPassword, role });
-      await Swal.fire({ icon: "success", title: "Account created", text: "Your account was created successfully." });
+        await createAccount({ name, email, password, confirmPassword, role });
+        await Swal.fire({
+          icon: "success",
+          title: "Account created",
+          text: "Your account was created successfully.",
+        });
+        setMode("signin");
+        setPassword("");
+        setConfirmPassword("");
+        setShowPassword(false);
+        setShowConfirmPassword(false);
       } catch (e2) {
         setErr(e2 instanceof Error ? e2.message : "Account creation failed.");
       } finally {
@@ -179,24 +190,58 @@ function LoginScreen() {
         </FormField>
 
         <FormField label="Password" error={err ?? undefined} className="mt-4">
-          <Input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={mode === "signin" ? "Enter your password" : "At least 8 chars"}
-            autoComplete={mode === "signin" ? "current-password" : "new-password"}
-          />
+          <div className="relative">
+            <Input
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={mode === "signin" ? "Enter your password" : "At least 8 chars"}
+              autoComplete={mode === "signin" ? "current-password" : "new-password"}
+              className="pr-10"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((visible) => !visible)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              title={showPassword ? "Hide password" : "Show password"}
+              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted transition-colors hover:text-foreground"
+            >
+              {showPassword ? (
+                <EyeOff size={16} aria-hidden="true" />
+              ) : (
+                <Eye size={16} aria-hidden="true" />
+              )}
+            </button>
+          </div>
         </FormField>
 
         {mode === "signup" && (
           <FormField label="Confirm password" error={err ?? undefined} className="mt-4">
-            <Input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm your password"
-              autoComplete="new-password"
-            />
+            <div className="relative">
+              <Input
+                type={showConfirmPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm your password"
+                autoComplete="new-password"
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((visible) => !visible)}
+                aria-label={
+                  showConfirmPassword ? "Hide confirmed password" : "Show confirmed password"
+                }
+                title={showConfirmPassword ? "Hide confirmed password" : "Show confirmed password"}
+                className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted transition-colors hover:text-foreground"
+              >
+                {showConfirmPassword ? (
+                  <EyeOff size={16} aria-hidden="true" />
+                ) : (
+                  <Eye size={16} aria-hidden="true" />
+                )}
+              </button>
+            </div>
           </FormField>
         )}
 
