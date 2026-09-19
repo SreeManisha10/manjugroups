@@ -36,7 +36,7 @@ jobs:
           export PAGES_BASE_PATH="/${GITHUB_REPOSITORY#*/}"
           export VITE_BASE_PATH="$PAGES_BASE_PATH"
           npm run build
-          sed -i -E "s#(\.\.?/|/)?assets/#${PAGES_BASE_PATH}/assets/#g" .output/public/_shell.html
+          sed -i -E "s#/?(\.\.?/)?assets/#${PAGES_BASE_PATH}/assets/#g" .output/public/_shell.html
           cp .output/public/_shell.html .output/public/index.html
           cp .output/public/_shell.html .output/public/404.html
 
