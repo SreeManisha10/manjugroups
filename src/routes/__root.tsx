@@ -12,9 +12,9 @@ import appCss from "../styles.css?url";
 import { CrmProvider } from "../lib/crm/store";
 import { reportManjuError } from "../lib/manju-error-reporting";
 
-function NotFoundComponent() {
-  const appBasePath = import.meta.env["VITE_BASE_PATH"] ?? "";
+const APP_BASE_PATH = "/manjugroups/";
 
+function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
@@ -25,7 +25,7 @@ function NotFoundComponent() {
         </p>
         <div className="mt-6">
           <a
-            href={`${appBasePath}/`}
+            href={APP_BASE_PATH}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go home
@@ -39,7 +39,6 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
-  const appBasePath = import.meta.env["VITE_BASE_PATH"] ?? "";
   useEffect(() => {
     reportManjuError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
@@ -65,7 +64,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
           </button>
           <a
             className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-            href={`${appBasePath}/`}
+            href={APP_BASE_PATH}
           >
             Go home
           </a>

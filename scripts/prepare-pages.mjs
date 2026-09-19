@@ -3,14 +3,8 @@ import path from "node:path";
 
 const publicDirectory = path.resolve(".output/public");
 const assetsDirectory = path.join(publicDirectory, "assets");
-const configuredBasePath = process.env.PAGES_BASE_PATH;
-
-if (!configuredBasePath) {
-  throw new Error("PAGES_BASE_PATH is required to prepare the GitHub Pages artifact.");
-}
-
-const basePath = configuredBasePath.replace(/\/+$/, "");
-const routerBasePath = `${basePath}/`;
+const basePath = "/manjugroups";
+const routerBasePath = "/manjugroups/";
 
 for (const fileName of fs.readdirSync(assetsDirectory)) {
   if (!fileName.endsWith(".js")) continue;

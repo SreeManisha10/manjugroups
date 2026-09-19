@@ -33,8 +33,6 @@ jobs:
 
       - name: Build static site
         run: |
-          export PAGES_BASE_PATH="/${GITHUB_REPOSITORY#*/}"
-          export VITE_BASE_PATH="$PAGES_BASE_PATH/"
           npm run build
           node scripts/prepare-pages.mjs
 
