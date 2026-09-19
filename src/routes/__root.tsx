@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
+  Link,
   createRootRouteWithContext,
   useRouter,
   HeadContent,
@@ -12,8 +13,6 @@ import appCss from "../styles.css?url";
 import { CrmProvider } from "../lib/crm/store";
 import { reportManjuError } from "../lib/manju-error-reporting";
 
-const APP_BASE_PATH = "/manjugroups/";
-
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -24,12 +23,12 @@ function NotFoundComponent() {
           The page you're looking for doesn't exist or has been moved.
         </p>
         <div className="mt-6">
-          <a
-            href={APP_BASE_PATH}
+          <Link
+            to="/"
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go home
-          </a>
+          </Link>
         </div>
       </div>
     </div>
@@ -62,12 +61,12 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
           >
             Try again
           </button>
-          <a
+          <Link
             className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-            href={APP_BASE_PATH}
+            to="/"
           >
             Go home
-          </a>
+          </Link>
         </div>
       </div>
     </div>
@@ -95,11 +94,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
       },
-      {
-        rel: "icon",
-        href: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23ffffff'/%3E%3Ccircle cx='50' cy='50' r='45' fill='%231e60b8'/%3E%3Ctext x='50' y='60' font-size='40' text-anchor='middle' font-family='Inter,Arial' fill='white' font-weight='700'%3EMG%3C/text%3E%3C/svg%3E",
-        type: "image/svg+xml",
-      },
+      { rel: "icon", href: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23ffffff'/%3E%3Ccircle cx='50' cy='50' r='45' fill='%231e60b8'/%3E%3Ctext x='50' y='60' font-size='40' text-anchor='middle' font-family='Inter,Arial' fill='white' font-weight='700'%3EMG%3C/text%3E%3C/svg%3E", type: "image/svg+xml" },
     ],
   }),
   shellComponent: RootShell,
