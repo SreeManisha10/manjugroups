@@ -6,6 +6,7 @@ import { StatusChip } from "@/components/crm/StageChip";
 import { EmptyState, ErrorBanner, LoadingRows } from "@/components/crm/States";
 import { Button } from "@/components/kit";
 import { formatINR } from "@/lib/crm/format";
+import { notifyError, notifySuccess } from "@/lib/crm/notifications";
 import { useCrm, useLookups } from "@/lib/crm/store";
 import { fetchProperties, type PropertiesResponse } from "@/lib/crm/api";
 import type { UnitStatus } from "@/lib/crm/types";
@@ -100,16 +101,28 @@ function PropertiesPage() {
   const currentPage = Math.min(page, totalPages);
 
   const groups = useMemo(() => {
-    const projects = (data?.projects ?? []).filter(
-      (p) => projectName === "all" || p.name === projectName,
+    const projectOptions = data?.projects ?? [];
+    const validProjectName = projectName === "all" || projectOptions.some((p) => p.name === projectName)
+      ? projectName
+      : "all";
+    const validStatus = status === "all" || ["Available", "Reserved", "Sold"].includes(status)
+      ? status
+      : "all";
+    const validAssignedRep = assignedRep === "all" || (data?.users ?? []).some((u) => u.id === assignedRep)
+      ? assignedRep
+      : "all";
+
+    const projects = projectOptions.filter(
+      (p) => validProjectName === "all" || p.name === validProjectName,
     );
+
     return projects.map((project) => {
       const buildings = (data?.buildings ?? []).filter((b) => b.projectId === project.id);
       const units = (data?.units ?? []).filter((u) => {
         const matchesProject = buildings.some((b) => b.id === u.buildingId);
-        const matchesStatus = status === "all" || u.status === status;
+        const matchesStatus = validStatus === "all" || u.status === validStatus;
         const matchesQuery = !query.trim() || u.code.toLowerCase().includes(query.trim().toLowerCase());
-        const matchesAssignedRep = assignedRep === "all" || (u.assignedToId ?? "") === assignedRep;
+        const matchesAssignedRep = validAssignedRep === "all" || (u.assignedToId ?? "") === validAssignedRep;
         const matchesEmployee = !isEmployee || (u.assignedToId ?? user?.id ?? "") === user?.id;
         return matchesProject && matchesStatus && matchesQuery && matchesAssignedRep && matchesEmployee;
       });
@@ -129,6 +142,11 @@ function PropertiesPage() {
     if (isEmployee) return (unit.assignedToId ?? user?.id ?? "") === user?.id;
     return assignedRep === "all" || (unit.assignedToId ?? "") === assignedRep;
   });
+  const assignedUnits = (data?.units ?? []).filter((unit) => {
+    if (user?.role === "Admin") return Boolean(unit.assignedToId);
+    return unit.assignedToId === user?.id;
+  });
+  const assignedValue = assignedUnits.reduce((sum, unit) => sum + unit.price, 0);
   const inventoryValue = allUnits.reduce((sum, unit) => sum + unit.price, 0);
   const kpis = [
     { label: "Total units", value: propertiesResponse?.kpis.totalUnits ?? allUnits.length },
@@ -155,19 +173,28 @@ function PropertiesPage() {
       value: formatINR(propertiesResponse?.kpis.inventoryValue ?? inventoryValue),
     },
   ];
-  const tableRows = (propertiesResponse?.data ?? groups.flatMap(({ project, buildings, units }) => units.map((unit) => ({
-    ...unit,
-    project: {
-      id: project.id,
-      name: project.name,
-      location: project.location,
-    },
-    building: {
-      id: unit.buildingId,
-      name: buildings.find((building) => building.id === unit.buildingId)?.name ?? "—",
-    },
-    assignedTo: users.get(unit.assignedToId ?? "")?.name ?? "Unassigned",
-  })))) as Array<
+  const dashboardSummary = [
+    { label: "Assigned units", value: assignedUnits.length },
+    { label: "Assigned value", value: formatINR(assignedValue) },
+    { label: "Available", value: allUnits.filter((unit) => unit.status === "Available").length },
+  ];
+  const tableRows = (
+    data
+      ? groups.flatMap(({ project, buildings, units }) => units.map((unit) => ({
+          ...unit,
+          project: {
+            id: project.id,
+            name: project.name,
+            location: project.location,
+          },
+          building: {
+            id: unit.buildingId,
+            name: buildings.find((building) => building.id === unit.buildingId)?.name ?? "—",
+          },
+          assignedTo: users.get(unit.assignedToId ?? "")?.name ?? "Unassigned",
+        })))
+      : (propertiesResponse?.data ?? [])
+  ) as Array<
     (typeof data extends { units: infer T } ? T extends Array<infer U> ? U & { assignedTo?: string; project: { id: string; name: string; location: string }; building: { id: string; name: string } } : never : never) | {
       assignedTo?: string;
       project: { id: string; name: string; location: string };
@@ -205,19 +232,29 @@ function PropertiesPage() {
         {loading ? (
           <LoadingRows rows={2} />
         ) : (
-          <div className="mb-4 grid grid-cols-2 gap-3 border-b border-border pb-4 sm:grid-cols-3 xl:grid-cols-5">
-            {kpis.map((kpi) => (
-              <div
-                key={kpi.label}
-                className="rounded-xl bg-foreground/[0.03] px-3 py-2.5 ring-1 ring-border"
-              >
-                <div className="font-mono text-[10px] uppercase tracking-wide text-muted">
-                  {kpi.label}
+          <>
+            <div className="mb-4 grid grid-cols-2 gap-3 border-b border-border pb-4 sm:grid-cols-3 xl:grid-cols-5">
+              {kpis.map((kpi) => (
+                <div
+                  key={kpi.label}
+                  className="rounded-xl bg-foreground/[0.03] px-3 py-2.5 ring-1 ring-border"
+                >
+                  <div className="font-mono text-[10px] uppercase tracking-wide text-muted">
+                    {kpi.label}
+                  </div>
+                  <div className="mt-1.5 text-lg font-bold tracking-tight">{kpi.value}</div>
                 </div>
-                <div className="mt-1.5 text-lg font-bold tracking-tight">{kpi.value}</div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+              {dashboardSummary.map((item) => (
+                <div key={item.label} className="rounded-xl border border-border bg-foreground/[0.02] p-3">
+                  <div className="font-mono text-[10px] uppercase tracking-wide text-muted">{item.label}</div>
+                  <div className="mt-2 text-xl font-bold tracking-tight">{item.value}</div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
           <input
@@ -329,6 +366,40 @@ function PropertiesPage() {
             ))}
           </div>
         )}
+
+        {assignedUnits.length > 0 && (
+          <div className="mt-4 rounded-xl border border-border bg-foreground/[0.02] p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-[13px] font-semibold">Assigned inventory</div>
+              <div className="font-mono text-[10px] text-muted">{assignedUnits.length} units</div>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {assignedUnits.slice(0, 6).map((unit) => {
+                const project = data?.projects.find((candidate) =>
+                  data?.buildings.some(
+                    (building) => building.id === unit.buildingId && building.projectId === candidate.id,
+                  ),
+                );
+                const building = data?.buildings.find((candidate) => candidate.id === unit.buildingId);
+                const repName = users.get(unit.assignedToId ?? "")?.name ?? "Unassigned";
+                return (
+                  <div key={unit.id} className="rounded-lg border border-border bg-surface/70 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-medium">{unit.code}</div>
+                      <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] ${CELL[unit.status]}`}>
+                        {unit.status}
+                      </span>
+                    </div>
+                    <div className="mt-2 font-mono text-[10px] text-muted">
+                      {project?.name ?? "Project"} · {building?.name ?? "Building"}
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted">{repName}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="glass animate-rise mt-4 rounded-2xl p-4 [animation-delay:120ms]">
@@ -375,8 +446,22 @@ function PropertiesPage() {
                       {!isEmployee ? (
                         <select
                           value={unit.assignedToId ?? ""}
-                          onChange={(event) => {
-                            void updateUnitAssignment(unit.id, event.target.value || null);
+                          onChange={async (event) => {
+                            const nextAssignedToId = event.target.value || null;
+                            const nextRep = (data?.users ?? []).find(
+                              (candidate) => candidate.id === nextAssignedToId,
+                            );
+
+                            try {
+                              await updateUnitAssignment(unit.id, nextAssignedToId);
+                              await notifySuccess(
+                                "Assignment updated",
+                                nextRep ? `${unit.code} is now assigned to ${nextRep.name}.` : `${unit.code} is now unassigned.`,
+                              );
+                            } catch (caught) {
+                              const message = caught instanceof Error ? caught.message : "Could not update assignment.";
+                              await notifyError("Assignment update failed", message);
+                            }
                           }}
                           className="rounded-md border border-border bg-surface px-2 py-1 text-[11px]"
                           aria-label={`Assign ${unit.code} to a rep`}
@@ -399,8 +484,19 @@ function PropertiesPage() {
                       ) : (
                         <select
                           value={unit.status}
-                          onChange={(event) => {
-                            void updateUnitStatus(unit.id, event.target.value as UnitStatus);
+                          onChange={async (event) => {
+                            const nextStatus = event.target.value as UnitStatus;
+
+                            try {
+                              await updateUnitStatus(unit.id, nextStatus);
+                              await notifySuccess(
+                                "Status updated",
+                                `${unit.code} is now ${nextStatus}.`,
+                              );
+                            } catch (caught) {
+                              const message = caught instanceof Error ? caught.message : "Could not update status.";
+                              await notifyError("Status update failed", message);
+                            }
                           }}
                           className="rounded-md border border-border bg-surface px-2 py-1 text-[11px]"
                           aria-label={`Change status for ${unit.code}`}

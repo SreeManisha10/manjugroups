@@ -128,6 +128,77 @@ function write(data: CrmData): void {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
+function mapPropertiesSnapshot(data: CrmData, filters: { search?: string; project?: string; status?: string; offset?: number; limit?: number } = {}): PropertiesResponse {
+  const projectFilter = filters.project ?? "all";
+  const statusFilter = filters.status ?? "all";
+  const searchText = (filters.search ?? "").trim().toLowerCase();
+  const offset = Math.max(0, Number(filters.offset ?? 0));
+  const limit = Math.max(1, Number(filters.limit ?? 10));
+
+  const rows = data.units
+    .map((unit) => {
+      const building = data.buildings.find((candidate) => candidate.id === unit.buildingId);
+      const project = building ? data.projects.find((candidate) => candidate.id === building.projectId) : undefined;
+      const assignedTo = unit.assignedToId ? data.users.find((user) => user.id === unit.assignedToId)?.name ?? "Unassigned" : "Unassigned";
+      return {
+        ...unit,
+        project: {
+          id: project?.id ?? building?.projectId ?? "",
+          name: project?.name ?? "Unassigned project",
+          location: project?.location ?? "",
+        },
+        building: {
+          id: building?.id ?? "",
+          name: building?.name ?? "Unassigned building",
+        },
+        assignedTo,
+      };
+    })
+    .filter((unit) => {
+      const matchesProject = projectFilter === "all" || unit.project.name === projectFilter;
+      const matchesStatus = statusFilter === "all" || unit.status === statusFilter;
+      const matchesSearch = !searchText || unit.code.toLowerCase().includes(searchText);
+      return matchesProject && matchesStatus && matchesSearch;
+    });
+
+  const total = rows.length;
+  const pageRows = rows.slice(offset, offset + limit);
+  const inventoryValue = data.units.reduce((totalValue, unit) => totalValue + unit.price, 0);
+
+  return {
+    data: pageRows.map((unit) => ({
+      id: unit.id,
+      code: unit.code,
+      project: unit.project,
+      building: unit.building,
+      type: unit.type,
+      areaSqft: unit.areaSqft,
+      price: unit.price,
+      status: unit.status,
+      assignedToId: unit.assignedToId,
+      assignedTo: unit.assignedTo,
+    })),
+    kpis: {
+      totalUnits: data.units.length,
+      availableUnits: data.units.filter((unit) => unit.status === "Available").length,
+      reservedUnits: data.units.filter((unit) => unit.status === "Reserved").length,
+      soldUnits: data.units.filter((unit) => unit.status === "Sold").length,
+      inventoryValue,
+    },
+    filters: {
+      projects: data.projects.map((project) => ({ id: project.id, name: project.name })),
+      statuses: ["Available", "Reserved", "Sold"],
+    },
+    pagination: {
+      offset,
+      limit,
+      total,
+      hasNext: offset + limit < total,
+      hasPrevious: offset > 0,
+    },
+  };
+}
+
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 
 export class ApiError extends Error {}
@@ -203,6 +274,10 @@ export async function fetchAll(): Promise<CrmData> {
       bookings,
     } as CrmData;
   } catch (error) {
+    const fallback = read();
+    if (fallback && fallback.units.length) {
+      return fallback;
+    }
     if (error instanceof HttpApiError) throw new ApiError(error.message);
     throw error;
   }
@@ -222,7 +297,18 @@ export async function fetchProperties(params: {
     offset: String(params.offset ?? 0),
     limit: String(params.limit ?? 10),
   });
-  return api.get<PropertiesResponse>(`${ENDPOINTS.properties}?${query.toString()}`);
+
+  try {
+    return await api.get<PropertiesResponse>(`${ENDPOINTS.properties}?${query.toString()}`);
+  } catch {
+    return mapPropertiesSnapshot(read(), {
+      search: params.search,
+      project: params.project,
+      status: params.status,
+      offset: params.offset,
+      limit: params.limit,
+    });
+  }
 }
 
 export async function fetchLeads(params: {
@@ -364,11 +450,20 @@ function saveUnitLocally(
 }
 
 export async function updateUnitAssignment(unitId: string, assignedToId: string | null): Promise<CrmData> {
-  await propertiesAPI.assign<unknown, { id: string; assignedToId: string | null }>({
-    id: unitId,
-    assignedToId,
-  });
-  return fetchAll();
+  try {
+    await propertiesAPI.assign<unknown, { id: string; assignedToId: string | null }>({
+      id: unitId,
+      assignedToId,
+    });
+    return fetchAll();
+  } catch {
+    const localData = read();
+    const unit = localData.units.find((candidate) => candidate.id === unitId);
+    if (!unit) return localData;
+    unit.assignedToId = assignedToId;
+    write(localData);
+    return localData;
+  }
 }
 
 export async function updateUnitStatus(
@@ -376,12 +471,21 @@ export async function updateUnitStatus(
   status: UnitStatus,
   actorId: string,
 ): Promise<CrmData> {
-  await propertiesAPI.updateStatus<unknown, { id: string; status: UnitStatus; actorId: string }>({
-    id: unitId,
-    status,
-    actorId,
-  });
-  return fetchAll();
+  try {
+    await propertiesAPI.updateStatus<unknown, { id: string; status: UnitStatus; actorId: string }>({
+      id: unitId,
+      status,
+      actorId,
+    });
+    return fetchAll();
+  } catch {
+    const localData = read();
+    const unit = localData.units.find((candidate) => candidate.id === unitId);
+    if (!unit) return localData;
+    unit.status = status;
+    write(localData);
+    return localData;
+  }
 }
 
 export async function deleteLead(id: string): Promise<CrmData> {

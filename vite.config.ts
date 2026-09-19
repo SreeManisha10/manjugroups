@@ -6,36 +6,16 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
-const APP_BASE_PATH = "/manjugroups/";
-const APP_BASE_PREFIX = APP_BASE_PATH.slice(0, -1);
-
 export default defineConfig({
-  plugins: [
-    {
-      name: "redirect-root-to-app-base-path",
-      enforce: "pre",
-      configureServer(server) {
-        server.middlewares.use((request, response, next) => {
-          if (request.url === "/") {
-            response.statusCode = 302;
-            response.setHeader("Location", APP_BASE_PATH);
-            response.end();
-            return;
-          }
-          if (request.url?.startsWith(APP_BASE_PREFIX)) {
-            const rewrittenUrl = request.url.slice(APP_BASE_PREFIX.length) || "/";
-            request.url = rewrittenUrl;
-            Object.assign(request, { originalUrl: rewrittenUrl });
-          }
-          next();
-        });
-      },
-    },
-  ],
   vite: {
-    base: "./",
+    base: "/manjugroups/",
     server: {
-      open: APP_BASE_PATH,
+      host: "0.0.0.0",
+      port: 8000,
+    },
+    preview: {
+      host: "0.0.0.0",
+      port: 8000,
     },
   },
   tanstackStart: {

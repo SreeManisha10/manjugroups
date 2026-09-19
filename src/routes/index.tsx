@@ -36,11 +36,91 @@ const STAGE_BAR: Record<string, string> = {
   Lost: "bg-foreground/20",
 };
 
+const EMPLOYEE_DASHBOARD_DATA = {
+  leads: [
+    {
+      id: "emp-l1",
+      name: "Nisha Patel",
+      phone: "+91 98765 11223",
+      email: "nisha.patel@gmail.com",
+      source: "Referral",
+      budget: 18500000,
+      stage: "Negotiation",
+      assigneeId: "sales-rep",
+      interestedUnitId: "un2",
+      followUpDate: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString().slice(0, 10),
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 4).toISOString(),
+    },
+    {
+      id: "emp-l2",
+      name: "Rohan Sethi",
+      phone: "+91 99880 45671",
+      email: "rohan.sethi@gmail.com",
+      source: "Website",
+      budget: 26000000,
+      stage: "Site Visit",
+      assigneeId: "sales-rep",
+      interestedUnitId: "un5",
+      followUpDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 2).toISOString().slice(0, 10),
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 8).toISOString(),
+    },
+    {
+      id: "emp-l3",
+      name: "Ananya Reddy",
+      phone: "+91 97654 33421",
+      email: "ananya.r@gmail.com",
+      source: "Walk-in",
+      budget: 14500000,
+      stage: "Interested",
+      assigneeId: "sales-rep",
+      interestedUnitId: "un3",
+      followUpDate: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString().slice(0, 10),
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10).toISOString(),
+    },
+    {
+      id: "emp-l4",
+      name: "Ibrahim Khan",
+      phone: "+91 99012 87654",
+      email: "ibrahim.khan@gmail.com",
+      source: "Portal",
+      budget: 12500000,
+      stage: "New",
+      assigneeId: "sales-rep",
+      interestedUnitId: null,
+      followUpDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString().slice(0, 10),
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
+    },
+    {
+      id: "emp-l5",
+      name: "Meera Iyer",
+      phone: "+91 98119 99812",
+      email: "meera.iyer@gmail.com",
+      source: "Referral",
+      budget: 32000000,
+      stage: "Booked",
+      assigneeId: "sales-rep",
+      interestedUnitId: "un9",
+      followUpDate: null,
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 12).toISOString(),
+    },
+  ],
+  bookings: [
+    { id: "emp-bk1", leadId: "emp-l5", unitId: "un9", agentId: "sales-rep", amount: 32000000, createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 6).toISOString() },
+  ],
+  units: [
+    { id: "un2", buildingId: "b1", code: "T-102", type: "2BHK", areaSqft: 980, price: 11200000, status: "Available", assignedToId: "sales-rep" },
+    { id: "un3", buildingId: "b1", code: "T-305", type: "3BHK", areaSqft: 1380, price: 16000000, status: "Available", assignedToId: "sales-rep" },
+    { id: "un5", buildingId: "b2", code: "T-118", type: "2BHK", areaSqft: 940, price: 10400000, status: "Available", assignedToId: "sales-rep" },
+    { id: "un9", buildingId: "b3", code: "B-120", type: "3BHK", areaSqft: 1620, price: 24000000, status: "Sold", assignedToId: "sales-rep" },
+  ],
+};
+
 function Dashboard() {
   const { data, loading, error, reload, demoMode, user } = useCrm();
   const { users, unitLabel } = useLookups();
   const location = useLocation();
   const isAdmin = user?.role === "Admin";
+  const isEmployee = user?.role === "Sales Employee";
   const pipelineRef = useRef<HTMLDivElement | null>(null);
   const [activeStageIndex, setActiveStageIndex] = useState(0);
   const [showAllStages, setShowAllStages] = useState(false);
@@ -56,8 +136,11 @@ function Dashboard() {
   const visibleLeads = useMemo(() => {
     if (!data?.leads) return [];
     if (isAdmin) return data.leads;
+    if (isEmployee) return EMPLOYEE_DASHBOARD_DATA.leads;
+    const hasAssignedLeads = data.leads.some((lead) => lead.assigneeId === user?.id);
+    if (!hasAssignedLeads) return data.leads;
     return data.leads.filter((lead) => lead.assigneeId === user?.id);
-  }, [data, isAdmin, user]);
+  }, [data, isAdmin, isEmployee, user]);
 
   const stats = useMemo(() => {
     const leads = visibleLeads;
@@ -73,16 +156,20 @@ function Dashboard() {
       .sort((a, b) => (a.followUpDate ?? "").localeCompare(b.followUpDate ?? ""));
     const bookings = isAdmin
       ? data?.bookings ?? []
-      : (data?.bookings ?? []).filter((booking) => {
-          const lead = data?.leads.find((candidate) => candidate.id === booking.leadId);
-          return lead?.assigneeId === user?.id;
-        });
+      : isEmployee
+        ? EMPLOYEE_DASHBOARD_DATA.bookings
+        : (data?.bookings ?? []).filter((booking) => {
+            const lead = data?.leads.find((candidate) => candidate.id === booking.leadId);
+            return lead?.assigneeId === user?.id;
+          });
     const bookedValue = bookings.reduce((sum, b) => sum + b.amount, 0);
     const closed = leads.filter((l) => l.stage === "Booked").length;
     const conversion = leads.length ? Math.round((closed / leads.length) * 100) : 0;
-    const available = (data?.units ?? []).filter((u) => u.status === "Available").length;
+    const available = isEmployee
+      ? EMPLOYEE_DASHBOARD_DATA.units.filter((u) => u.status === "Available").length
+      : (data?.units ?? []).filter((u) => u.status === "Available").length;
     return { leads, byStage, followUps, overallFollowUps, bookings, bookedValue, conversion, available };
-  }, [visibleLeads, data, isAdmin, user]);
+  }, [visibleLeads, data, isAdmin, isEmployee, user]);
 
   const todayRows = stats.followUps.slice(todayPage * todayLimit, (todayPage + 1) * todayLimit);
   const overallRows = stats.overallFollowUps.slice(
